@@ -1,151 +1,98 @@
-import { Request,Response } from "express";
-import { getAllProducts, createProduct, getProductById, updateProduct, deleteProduct } from "../services/product.service";
+import { Request, Response } from "express";
+import {
+  getAllProducts,
+  getProductById,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+} from "../services/product.service";
+import { AppError } from "../utils/AppError";
 
 // GET /products
 export const getProducts = async (req: Request, res: Response) => {
-  try {
-    const products = await getAllProducts();
+  const products = await getAllProducts();
 
-    return res.json({
-      success: true,
-      data: products,
-    });
-  } catch (error: any) {
-    console.error(error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch products",
-    });
-  }
-};
-
-// POST /products
-export const addProduct = async (req: Request, res: Response) => {
-  try {
-    const { name, sku, costPrice, sellPrice, stock } = req.body;
-
-    const product = await createProduct({
-      name,
-      sku,
-      costPrice,
-      sellPrice,
-      stock,
-    });
-
-    return res.status(201).json({
-      success: true,
-      data: product,
-    });
-  } catch (error) {
-      console.error(error);
-
-      return res.status(500).json({
-        success: false,
-        message: "Failed to create product",
-      });
-    }
+  return res.json({
+    success: true,
+    data: products,
+  });
 };
 
 // GET /products/:id
 export const getProduct = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params as { id: string };
+  const id = req.params.id as string;
 
-    const product = await getProductById(id);
+  const product = await getProductById(id);
 
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: "Product not found",
-      });
-    }
-
-    return res.json({
-      success: true,
-      data: product,
-    });
-  } catch (error) {
-    console.error(error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch product",
-    });
+  if (!product) {
+    throw new AppError("Product not found", 404);
   }
+
+  return res.json({
+    success: true,
+    data: product,
+  });
 };
 
-//PUT /products/:id
+// POST /products
+export const addProduct = async (req: Request, res: Response) => {
+  const { name, sku, costPrice, sellPrice, stock } = req.body;
+
+  const product = await createProduct({
+    name,
+    sku,
+    costPrice,
+    sellPrice,
+    stock,
+  });
+
+  return res.status(201).json({
+    success: true,
+    data: product,
+  });
+};
+
+// PUT /products/:id
 export const editProduct = async (req: Request, res: Response) => {
-  try {
-    const id = req.params.id as string;
+  const id = req.params.id as string;
 
-    const existingProduct = await getProductById(id);
+  const existingProduct = await getProductById(id);
 
-    if (!existingProduct) {
-      return res.status(404).json({
-        success: false,
-        message: "Product not found",
-      });
-    }
+  if (!existingProduct) {
+    throw new AppError("Product not found", 404);
+  }
 
-    const { 
-      name, 
-      sku, 
-      costPrice, 
-      sellPrice, 
-      stock, 
-      isActive 
-    } = req.body;
-    
-    const updatedProduct = await updateProduct(id, {
-      name,
-      sku,
-      costPrice,
-      sellPrice,
-      stock,
-      isActive,
-    });
-    
-    return res.json({
-      success: true,
-      data: updatedProduct,
-    });
-  } catch (error) {
-      console.error(error);
+  const { name, sku, costPrice, sellPrice, stock, isActive } = req.body;
 
-      return res.status(500).json({
-        success: false,
-        message: "Failed to update product",
-      });
-    }
+  const updatedProduct = await updateProduct(id, {
+    name,
+    sku,
+    costPrice,
+    sellPrice,
+    stock,
+    isActive,
+  });
+
+  return res.json({
+    success: true,
+    data: updatedProduct,
+  });
 };
 
 // DELETE /products/:id
 export const removeProduct = async (req: Request, res: Response) => {
-  try {
-    const id = req.params.id as string;
+  const id = req.params.id as string;
 
-    const existingProduct = await getProductById(id);
+  const existingProduct = await getProductById(id);
 
-    if (!existingProduct) {
-      return res.status(404).json({
-        success: false,
-        message: "Product not found",
-      });
-    }
-
-    await deleteProduct(id);
-
-    return res.json({
-      success: true,
-      message: "Product deleted successfully",
-    });
-  } catch (error) {
-    console.error(error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to delete product",
-    });
+  if (!existingProduct) {
+    throw new AppError("Product not found", 404);
   }
+
+  await deleteProduct(id);
+
+  return res.json({
+    success: true,
+    message: "Product deleted successfully",
+  });
 };

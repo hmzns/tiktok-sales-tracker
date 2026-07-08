@@ -1,4 +1,5 @@
 import prisma from "../lib/prisma";
+import { AppError } from "../utils/AppError";
 
 export const getAllProducts = async () => {
   return await prisma.product.findMany({
@@ -17,11 +18,13 @@ export const createProduct = async (data: {
   stock?: number;
 }) => {
   const existing = await prisma.product.findUnique({
-    where: { sku: data.sku },
+    where: {
+      sku: data.sku,
+    },
   });
 
   if (existing) {
-    throw new Error("SKU already exists");
+    throw new AppError("SKU already exists", 409);
   }
 
   return prisma.product.create({
