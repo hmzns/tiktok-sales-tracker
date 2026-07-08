@@ -7,6 +7,23 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum SalesPlatform {
+  MANUAL
+  TIKTOK_SHOP
+  SHOPEE
+  LAZADA
+}
+
+enum SalesOrderStatus {
+  PENDING
+  PAID
+  PACKING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -15,13 +32,57 @@ model User {
 }
 
 model Product {
-  id         String   @id @default(cuid())
-  name       String
-  sku        String   @unique
-  costPrice  Float
-  sellPrice  Float
-  stock      Int      @default(0)
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  name      String
+  sku       String   @unique
+  costPrice Float
+  sellPrice Float
+  stock     Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orderItems OrderItem[]
+}
+
+model SalesOrder {
+  id            String  @id @default(cuid())
+  orderNumber   String? @unique
+  tiktokOrderId String? @unique
+
+  platform SalesPlatform    @default(MANUAL)
+  status   SalesOrderStatus @default(PENDING)
+
+  customerName String?
+
+  subtotal    Float
+  discount    Float @default(0)
+  shippingFee Float @default(0)
+  total       Float
+
+  totalCost Float
+  profit    Float
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items OrderItem[]
+}
+
+model OrderItem {
+  id String @id @default(cuid())
+
+  orderId   String
+  productId String
+
+  quantity  Int
+  sellPrice Float
+  costPrice Float
+
+  lineTotal  Float
+  lineCost   Float
+  lineProfit Float
+
+  order   SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product    @relation(fields: [productId], references: [id])
 }

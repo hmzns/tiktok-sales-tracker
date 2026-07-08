@@ -1,0 +1,5 @@
+-- CreateEnum
+CREATE TYPE "SalesPlatform" AS ENUM ('MANUAL', 'TIKTOK_SHOP', 'SHOPEE', 'LAZADA');
+
+-- CreateEnum
+CREATE TYPE "SalesOrderStatus" AS ENUM ('PENDING', 'PAID', 'PACKING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED');
