@@ -154,3 +154,67 @@ export const getOrderById = async (id: string) => {
     },
   });
 };
+
+export const updateOrderStatus = async (
+  id: string,
+  status:
+    | "PENDING"
+    | "PAID"
+    | "PACKING"
+    | "SHIPPED"
+    | "DELIVERED"
+    | "CANCELLED"
+    | "REFUNDED"
+) => {
+  const order = await prisma.salesOrder.findUnique({
+    where: { id },
+    include: {
+      items: true,
+    },
+  });
+
+  if (!order) {
+    throw new AppError("Order not found", 404);
+  }
+
+  if (order.status === status) {
+    return order;
+  }
+
+  if (order.status === "CANCELLED" || order.status === "REFUNDED") {
+    throw new AppError("Cancelled or refunded orders cannot be updated", 400);
+  }
+
+  const shouldRestoreStock = status === "CANCELLED" || status === "REFUNDED";
+
+  return prisma.$transaction(async (tx) => {
+    if (shouldRestoreStock) {
+      for (const item of order.items) {
+        await tx.product.update({
+          where: {
+            id: item.productId,
+          },
+          data: {
+            stock: {
+              increment: item.quantity,
+            },
+          },
+        });
+      }
+    }
+
+    const updatedOrder = await tx.salesOrder.update({
+      where: { id },
+      data: { status },
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    });
+
+    return updatedOrder;
+  });
+};

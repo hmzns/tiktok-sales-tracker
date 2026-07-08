@@ -3,6 +3,7 @@ import {
   createOrder,
   getAllOrders,
   getOrderById,
+  updateOrderStatus,
 } from "../services/order.service";
 import { AppError } from "../utils/AppError";
 
@@ -32,6 +33,18 @@ export const getOrder = async (req: Request, res: Response) => {
   if (!order) {
     throw new AppError("Order not found", 404);
   }
+
+  return res.json({
+    success: true,
+    data: order,
+  });
+};
+
+export const editOrderStatus = async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const { status } = req.body;
+
+  const order = await updateOrderStatus(id, status);
 
   return res.json({
     success: true,
