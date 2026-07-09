@@ -34,6 +34,16 @@ enum ExpenseCategory {
   OTHER
 }
 
+enum StockMovementType {
+  RESTOCK
+  SALE
+  CANCEL_RESTORE
+  REFUND_RESTORE
+  MANUAL_IN
+  MANUAL_OUT
+  DAMAGE
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -56,7 +66,8 @@ model Product {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  orderItems OrderItem[]
+  orderItems     OrderItem[]
+  stockMovements StockMovement[]
 }
 
 model SalesOrder {
@@ -123,4 +134,21 @@ model ProductCategory {
   updatedAt DateTime @updatedAt
 
   products Product[]
+}
+
+model StockMovement {
+  id String @id @default(cuid())
+
+  productId   String
+  type        StockMovementType
+  quantity    Int
+  stockBefore Int
+  stockAfter  Int
+
+  note      String?
+  reference String?
+
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
 }

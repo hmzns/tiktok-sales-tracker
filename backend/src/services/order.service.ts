@@ -110,8 +110,8 @@ export const createOrder = async (data: CreateOrderInput) => {
       },
     });
 
-    for (const item of data.items) {
-      await tx.product.update({
+    for (const item of orderItemsData) {
+      const updatedProduct = await tx.product.update({
         where: {
           id: item.productId,
         },
@@ -119,6 +119,21 @@ export const createOrder = async (data: CreateOrderInput) => {
           stock: {
             decrement: item.quantity,
           },
+        },
+        select: {
+          stock: true,
+        },
+      });
+
+      await tx.stockMovement.create({
+        data: {
+          productId: item.productId,
+          type: "SALE",
+          quantity: -item.quantity,
+          stockBefore: updatedProduct.stock + item.quantity,
+          stockAfter: updatedProduct.stock,
+          reference: order.orderNumber ?? order.id,
+          note: `Stock deducted for order ${order.orderNumber ?? order.id}`,
         },
       });
     }
@@ -266,8 +281,11 @@ export const updateOrderStatus = async (
 
   return prisma.$transaction(async (tx) => {
     if (shouldRestoreStock) {
+      const restoreType =
+      status === "CANCELLED" ? "CANCEL_RESTORE" : "REFUND_RESTORE";
+
       for (const item of order.items) {
-        await tx.product.update({
+        const updatedProduct = await tx.product.update({
           where: {
             id: item.productId,
           },
@@ -275,6 +293,21 @@ export const updateOrderStatus = async (
             stock: {
               increment: item.quantity,
             },
+          },
+          select: {
+            stock: true,
+          },
+        });
+
+        await tx.stockMovement.create({
+          data: {
+            productId: item.productId,
+            type: restoreType,
+            quantity: item.quantity,
+            stockBefore: updatedProduct.stock - item.quantity,
+            stockAfter: updatedProduct.stock,
+            reference: order.orderNumber ?? order.id,
+            note: `Stock restored because order was ${status.toLowerCase()}`,
           },
         });
       }
