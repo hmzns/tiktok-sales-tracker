@@ -6,6 +6,7 @@ type ProductFilter = {
   page?: number;
   limit?: number;
   isActive?: boolean;
+  categoryId?: string;
 };
 
 // GET /products
@@ -37,6 +38,10 @@ export const getAllProducts = async (filter: ProductFilter) => {
     where.isActive = filter.isActive;
   }
 
+  if (filter.categoryId) {
+    where.categoryId = filter.categoryId;
+  }
+
   const [products, total] = await prisma.$transaction([
     prisma.product.findMany({
       where,
@@ -45,6 +50,9 @@ export const getAllProducts = async (filter: ProductFilter) => {
       },
       skip,
       take: limit,
+      include: {
+        category: true,
+      },
     }),
     prisma.product.count({
       where,
@@ -71,6 +79,7 @@ export const createProduct = async (data: {
   costPrice: number;
   sellPrice: number;
   stock?: number;
+  categoryId?: string | null;
 }) => {
   const existing = await prisma.product.findUnique({
     where: {
@@ -82,6 +91,18 @@ export const createProduct = async (data: {
     throw new AppError("SKU already exists", 409);
   }
 
+  if (data.categoryId) {
+    const category = await prisma.productCategory.findUnique({
+      where: {
+        id: data.categoryId,
+      },
+    });
+
+    if (!category) {
+      throw new AppError("Product category not found", 404);
+    }
+  }
+
   return prisma.product.create({
     data: {
       name: data.name,
@@ -89,6 +110,7 @@ export const createProduct = async (data: {
       costPrice: data.costPrice,
       sellPrice: data.sellPrice,
       stock: data.stock ?? 0,
+      categoryId: data.categoryId ?? null,
     },
   });
 };
@@ -98,6 +120,9 @@ export const getProductById = async (id: string) => {
   return prisma.product.findUnique({
     where: {
       id,
+    },
+    include: {
+      category: true,
     },
   });
 };
@@ -112,15 +137,28 @@ export const updateProduct = async (
     sellPrice?: number;
     stock?: number;
     isActive?: boolean;
+    categoryId?: string | null;
   }
 ) => {
+  if (data.categoryId) {
+    const category = await prisma.productCategory.findUnique({
+      where: {
+        id: data.categoryId,
+      },
+    });
+
+    if (!category) {
+      throw new AppError("Product category not found", 404);
+    }
+  }
+
   return prisma.product.update({
     where: {
       id,
     },
     data,
   });
-}
+};
 
 // DELETE PRODUCT BY ID
 export const deleteProduct = async (id: string) => {

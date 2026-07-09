@@ -12,6 +12,7 @@ export const createProductSchema = z.object({
     .nonnegative("Stock cannot be negative")
     .optional()
     .default(0),
+  categoryId: z.string().min(1, "Category ID is required").optional().nullable(),
 });
 
 export const updateProductSchema = createProductSchema.partial();

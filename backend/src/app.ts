@@ -5,6 +5,7 @@ import productsRouter from './routes/products';
 import ordersRouter from "./routes/orders";
 import dashboardRouter from "./routes/dashboard";
 import expensesRouter from "./routes/expenses";
+import productCategoriesRouter from "./routes/productCategories";
 import { errorHandler } from "./middleware/errorHandler";
 
 const app = express();
@@ -16,6 +17,7 @@ app.use('/products', productsRouter);
 app.use("/orders", ordersRouter);
 app.use("/dashboard", dashboardRouter);
 app.use("/expenses", expensesRouter);
+app.use("/product-categories", productCategoriesRouter);
 
 app.use(errorHandler);
 

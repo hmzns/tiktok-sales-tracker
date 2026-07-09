@@ -14,6 +14,9 @@ export const getProducts = async (req: Request, res: Response) => {
   const search = req.query.search ? String(req.query.search) : undefined;
   const page = req.query.page ? Number(req.query.page) : 1;
   const limit = req.query.limit ? Number(req.query.limit) : 10;
+  const categoryId = req.query.categoryId
+  ? String(req.query.categoryId)
+  : undefined;
 
   let isActive: boolean | undefined = undefined;
 
@@ -30,6 +33,7 @@ export const getProducts = async (req: Request, res: Response) => {
     page,
     limit,
     isActive,
+    categoryId,
   });
 
   return res.json({
@@ -57,7 +61,7 @@ export const getProduct = async (req: Request, res: Response) => {
 
 // POST /products
 export const addProduct = async (req: Request, res: Response) => {
-  const { name, sku, costPrice, sellPrice, stock } = req.body;
+  const { name, sku, costPrice, sellPrice, stock, categoryId } = req.body;
 
   const product = await createProduct({
     name,
@@ -65,6 +69,7 @@ export const addProduct = async (req: Request, res: Response) => {
     costPrice,
     sellPrice,
     stock,
+    categoryId,
   });
 
   return res.status(201).json({
@@ -83,7 +88,7 @@ export const editProduct = async (req: Request, res: Response) => {
     throw new AppError("Product not found", 404);
   }
 
-  const { name, sku, costPrice, sellPrice, stock, isActive } = req.body;
+  const { name, sku, costPrice, sellPrice, stock, isActive, categoryId } = req.body;
 
   const updatedProduct = await updateProduct(id, {
     name,
@@ -92,6 +97,7 @@ export const editProduct = async (req: Request, res: Response) => {
     sellPrice,
     stock,
     isActive,
+    categoryId,
   });
 
   return res.json({
