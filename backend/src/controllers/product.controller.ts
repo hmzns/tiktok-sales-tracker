@@ -10,11 +10,31 @@ import { AppError } from "../utils/AppError";
 
 // GET /products
 export const getProducts = async (req: Request, res: Response) => {
-  const products = await getAllProducts();
+  const search = req.query.search ? String(req.query.search) : undefined;
+  const page = req.query.page ? Number(req.query.page) : 1;
+  const limit = req.query.limit ? Number(req.query.limit) : 10;
+
+  let isActive: boolean | undefined = undefined;
+
+  if (req.query.isActive === "true") {
+    isActive = true;
+  }
+
+  if (req.query.isActive === "false") {
+    isActive = false;
+  }
+
+  const result = await getAllProducts({
+    search,
+    page,
+    limit,
+    isActive,
+  });
 
   return res.json({
     success: true,
-    data: products,
+    data: result.products,
+    meta: result.meta,
   });
 };
 

@@ -8,6 +8,7 @@ import {
 } from "../services/expense.service";
 import { AppError } from "../utils/AppError";
 
+// POST /expenses
 export const addExpense = async (req: Request, res: Response) => {
   const expense = await createExpense(req.body);
 
@@ -17,15 +18,45 @@ export const addExpense = async (req: Request, res: Response) => {
   });
 };
 
+// GET /expenses
 export const getExpenses = async (req: Request, res: Response) => {
-  const expenses = await getAllExpenses();
+  const search = req.query.search ? String(req.query.search) : undefined;
+  const page = req.query.page ? Number(req.query.page) : 1;
+  const limit = req.query.limit ? Number(req.query.limit) : 10;
+
+  const allowedCategories = [
+    "PACKAGING",
+    "ADS",
+    "SHIPPING",
+    "SUPPLIES",
+    "EQUIPMENT",
+    "SALARY",
+    "OTHER",
+  ] as const;
+
+  const category = req.query.category
+    ? String(req.query.category).toUpperCase()
+    : undefined;
+
+  if (category && !allowedCategories.includes(category as any)) {
+    throw new AppError("Invalid expense category", 400);
+  }
+
+  const result = await getAllExpenses({
+    search,
+    page,
+    limit,
+    category: category as any,
+  });
 
   return res.json({
     success: true,
-    data: expenses,
+    data: result.expenses,
+    meta: result.meta,
   });
 };
 
+// GET /expenses/:id
 export const getExpense = async (req: Request, res: Response) => {
   const id = req.params.id as string;
 
@@ -41,6 +72,7 @@ export const getExpense = async (req: Request, res: Response) => {
   });
 };
 
+// PATCH /expenses/:id
 export const editExpense = async (req: Request, res: Response) => {
   const id = req.params.id as string;
 
@@ -58,6 +90,7 @@ export const editExpense = async (req: Request, res: Response) => {
   });
 };
 
+// DELETE /expenses/:id
 export const removeExpense = async (req: Request, res: Response) => {
   const id = req.params.id as string;
 

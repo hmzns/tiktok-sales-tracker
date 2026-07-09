@@ -1,4 +1,5 @@
 import prisma from "../lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { AppError } from "../utils/AppError";
 
 type CreateOrderInput = {
@@ -23,6 +24,7 @@ type CreateOrderInput = {
   }[];
 };
 
+// POST /orders
 export const createOrder = async (data: CreateOrderInput) => {
   const discount = data.discount ?? 0;
   const shippingFee = data.shippingFee ?? 0;
@@ -125,21 +127,95 @@ export const createOrder = async (data: CreateOrderInput) => {
   });
 };
 
-export const getAllOrders = async () => {
-  return prisma.salesOrder.findMany({
-    orderBy: {
-      createdAt: "desc",
-    },
-    include: {
-      items: {
-        include: {
-          product: true,
-        },
-      },
-    },
-  });
+// GET /orders
+type OrderFilter = {
+  search?: string;
+  status?:
+    | "PENDING"
+    | "PAID"
+    | "PACKING"
+    | "SHIPPED"
+    | "DELIVERED"
+    | "CANCELLED"
+    | "REFUNDED";
+  platform?: "MANUAL" | "TIKTOK_SHOP" | "SHOPEE" | "LAZADA";
+  page?: number;
+  limit?: number;
 };
 
+export const getAllOrders = async (filter: OrderFilter = {}) => {
+  const page = filter.page && filter.page > 0 ? filter.page : 1;
+  const limit = filter.limit && filter.limit > 0 ? filter.limit : 10;
+  const skip = (page - 1) * limit;
+
+  const where: Prisma.SalesOrderWhereInput = {};
+
+  if (filter.search) {
+    where.OR = [
+      {
+        orderNumber: {
+          contains: filter.search,
+          mode: "insensitive",
+        },
+      },
+      {
+        tiktokOrderId: {
+          contains: filter.search,
+          mode: "insensitive",
+        },
+      },
+      {
+        customerName: {
+          contains: filter.search,
+          mode: "insensitive",
+        },
+      },
+    ];
+  }
+
+  if (filter.status) {
+    where.status = filter.status;
+  }
+
+  if (filter.platform) {
+    where.platform = filter.platform;
+  }
+
+  const [orders, total] = await prisma.$transaction([
+    prisma.salesOrder.findMany({
+      where,
+      orderBy: {
+        createdAt: "desc",
+      },
+      skip,
+      take: limit,
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    }),
+    prisma.salesOrder.count({
+      where,
+    }),
+  ]);
+
+  return {
+    orders,
+    meta: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      hasNextPage: page * limit < total,
+      hasPreviousPage: page > 1,
+    },
+  };
+};
+
+// GET /orders/:id
 export const getOrderById = async (id: string) => {
   return prisma.salesOrder.findUnique({
     where: {
@@ -155,6 +231,7 @@ export const getOrderById = async (id: string) => {
   });
 };
 
+// PATCH /orders/:id/status
 export const updateOrderStatus = async (
   id: string,
   status:

@@ -1,12 +1,66 @@
 import prisma from "../lib/prisma";
 import { AppError } from "../utils/AppError";
 
-export const getAllProducts = async () => {
-  return await prisma.product.findMany({
-    orderBy: {
-      createdAt: "desc",
+type ProductFilter = {
+  search?: string;
+  page?: number;
+  limit?: number;
+  isActive?: boolean;
+};
+
+export const getAllProducts = async (filter: ProductFilter) => {
+  const page = filter.page && filter.page > 0 ? filter.page : 1;
+  const limit = filter.limit && filter.limit > 0 ? filter.limit : 10;
+  const skip = (page - 1) * limit;
+
+  const where: any = {};
+
+  if (filter.search) {
+    where.OR = [
+      {
+        name: {
+          contains: filter.search,
+          mode: "insensitive",
+        },
+      },
+      {
+        sku: {
+          contains: filter.search,
+          mode: "insensitive",
+        },
+      },
+    ];
+  }
+
+  if (filter.isActive !== undefined) {
+    where.isActive = filter.isActive;
+  }
+
+  const [products, total] = await prisma.$transaction([
+    prisma.product.findMany({
+      where,
+      orderBy: {
+        createdAt: "desc",
+      },
+      skip,
+      take: limit,
+    }),
+    prisma.product.count({
+      where,
+    }),
+  ]);
+
+  return {
+    products,
+    meta: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      hasNextPage: page * limit < total,
+      hasPreviousPage: page > 1,
     },
-  });
+  };
 };
 
 // CREATE PRODUCT
