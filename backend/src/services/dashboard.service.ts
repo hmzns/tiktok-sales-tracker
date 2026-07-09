@@ -164,6 +164,72 @@ for (const order of orders) {
     take: 5,
   });
 
+  const stockMovements = await prisma.stockMovement.findMany({
+  where: {
+    createdAt: {
+      gte: startDate,
+      lt: endDate,
+    },
+  },
+});
+
+const recentStockMovements = await prisma.stockMovement.findMany({
+  orderBy: {
+    createdAt: "desc",
+  },
+  take: 5,
+  include: {
+    product: true,
+  },
+});
+
+const stockSummary = {
+  restocked: 0,
+  sold: 0,
+  damaged: 0,
+  restored: 0,
+  manualIn: 0,
+  manualOut: 0,
+  totalStockIn: 0,
+  totalStockOut: 0,
+};
+
+for (const movement of stockMovements) {
+  if (movement.quantity > 0) {
+    stockSummary.totalStockIn += movement.quantity;
+  }
+
+  if (movement.quantity < 0) {
+    stockSummary.totalStockOut += Math.abs(movement.quantity);
+  }
+
+  if (movement.type === "RESTOCK") {
+    stockSummary.restocked += movement.quantity;
+  }
+
+  if (movement.type === "SALE") {
+    stockSummary.sold += Math.abs(movement.quantity);
+  }
+
+  if (movement.type === "DAMAGE") {
+    stockSummary.damaged += Math.abs(movement.quantity);
+  }
+
+  if (
+    movement.type === "CANCEL_RESTORE" ||
+    movement.type === "REFUND_RESTORE"
+  ) {
+    stockSummary.restored += movement.quantity;
+  }
+
+  if (movement.type === "MANUAL_IN") {
+    stockSummary.manualIn += movement.quantity;
+  }
+
+  if (movement.type === "MANUAL_OUT") {
+    stockSummary.manualOut += Math.abs(movement.quantity);
+  }
+}
   return {
     period: {
       year,
@@ -184,5 +250,7 @@ for (const order of orders) {
     dailySales,
     expensesByCategory,
     lowStockProducts,
+    stockSummary,
+    recentStockMovements
   };
 };
