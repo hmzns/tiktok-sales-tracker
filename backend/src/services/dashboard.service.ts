@@ -151,6 +151,19 @@ for (const order of orders) {
     .sort((a, b) => b.quantitySold - a.quantitySold)
     .slice(0, 5);
 
+  const lowStockProducts = await prisma.product.findMany({
+    where: {
+      stock: {
+        lte: 5,
+      },
+      isActive: true,
+    },
+    orderBy: {
+      stock: "asc",
+    },
+    take: 5,
+  });
+
   return {
     period: {
       year,
@@ -170,5 +183,6 @@ for (const order of orders) {
     topProducts,
     dailySales,
     expensesByCategory,
+    lowStockProducts,
   };
 };

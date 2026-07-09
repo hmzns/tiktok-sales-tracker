@@ -5,6 +5,7 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  getLowStockProducts,
 } from "../services/product.service";
 import { AppError } from "../utils/AppError";
 
@@ -114,5 +115,25 @@ export const removeProduct = async (req: Request, res: Response) => {
   return res.json({
     success: true,
     message: "Product deleted successfully",
+  });
+};
+
+// GET /products/low-stock
+export const getLowStock = async (req: Request, res: Response) => {
+  const threshold = req.query.threshold ? Number(req.query.threshold) : 5;
+
+  if (Number.isNaN(threshold) || threshold < 0) {
+    throw new AppError("Invalid stock threshold", 400);
+  }
+
+  const products = await getLowStockProducts(threshold);
+
+  return res.json({
+    success: true,
+    data: products,
+    meta: {
+      threshold,
+      total: products.length,
+    },
   });
 };

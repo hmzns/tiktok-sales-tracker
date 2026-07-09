@@ -1,5 +1,11 @@
 import { Router } from "express";
-import { getProducts, addProduct, getProduct, editProduct, removeProduct } from "../controllers/product.controller";
+import { getProducts, 
+  addProduct, 
+  getProduct, 
+  editProduct, 
+  removeProduct, 
+  getLowStock 
+} from "../controllers/product.controller";
 import { validate } from "../middleware/validate";
 import {
   createProductSchema,
@@ -10,6 +16,8 @@ const router = Router();
 
 // GET all products
 router.get("/", getProducts);
+// GET low stock products
+router.get("/low-stock", getLowStock);
 // GET product by ID
 router.get("/:id", getProduct);
 // POST create product

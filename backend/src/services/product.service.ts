@@ -8,6 +8,7 @@ type ProductFilter = {
   isActive?: boolean;
 };
 
+// GET /products
 export const getAllProducts = async (filter: ProductFilter) => {
   const page = filter.page && filter.page > 0 ? filter.page : 1;
   const limit = filter.limit && filter.limit > 0 ? filter.limit : 10;
@@ -128,4 +129,19 @@ export const deleteProduct = async (id: string) => {
       id,
     },
   });
-}
+} 
+
+// GET LOW STOCK PRODUCTS
+export const getLowStockProducts = async (threshold: number) => {
+  return prisma.product.findMany({
+    where: {
+      stock: {
+        lte: threshold,
+      },
+      isActive: true,
+    },
+    orderBy: {
+      stock: "asc",
+    },
+  });
+};
