@@ -61,6 +61,37 @@ export const getDashboardSummary = async (filter: DashboardFilter) => {
 
   const averageOrderValue = orderCount > 0 ? revenue / orderCount : 0;
 
+  const expenses = await prisma.expense.findMany({
+    where: {
+      expenseDate: {
+        gte: startDate,
+        lt: endDate,
+      },
+    },
+  });
+
+  const totalExpenses = expenses.reduce(
+    (sum, expense) => sum + expense.amount,
+    0
+  );
+
+  const netProfit = profit - totalExpenses;
+
+  const expensesByCategory = expenses.reduce((acc, expense) => {
+    const existing = acc.find((item) => item.category === expense.category);
+
+    if (existing) {
+      existing.amount += expense.amount;
+    } else {
+      acc.push({
+        category: expense.category,
+        amount: expense.amount,
+      });
+    }
+
+    return acc;
+  }, [] as { category: string; amount: number }[]);
+
   const daysInMonth = new Date(year, month, 0).getDate();
 
   const dailySales = Array.from({ length: daysInMonth }, (_, index) => {
@@ -130,10 +161,14 @@ for (const order of orders) {
     revenue,
     totalCost,
     profit,
+    salesProfit: profit,
+    totalExpenses,
+    netProfit,
     orderCount,
     itemsSold,
     averageOrderValue,
     topProducts,
     dailySales,
+    expensesByCategory,
   };
 };

@@ -24,6 +24,16 @@ enum SalesOrderStatus {
   REFUNDED
 }
 
+enum ExpenseCategory {
+  PACKAGING
+  ADS
+  SHIPPING
+  SUPPLIES
+  EQUIPMENT
+  SALARY
+  OTHER
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -85,4 +95,16 @@ model OrderItem {
 
   order   SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product    @relation(fields: [productId], references: [id])
+}
+
+model Expense {
+  id          String          @id @default(cuid())
+  title       String
+  amount      Float
+  category    ExpenseCategory @default(OTHER)
+  description String?
+  expenseDate DateTime        @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
