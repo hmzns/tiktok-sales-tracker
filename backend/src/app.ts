@@ -7,6 +7,7 @@ import dashboardRouter from "./routes/dashboard";
 import expensesRouter from "./routes/expenses";
 import productCategoriesRouter from "./routes/productCategories";
 import stockMovementsRouter from "./routes/stockMovements";
+import reportsRouter from "./routes/reports";
 import { errorHandler } from "./middleware/errorHandler";
 
 const app = express();
@@ -20,7 +21,7 @@ app.use("/dashboard", dashboardRouter);
 app.use("/expenses", expensesRouter);
 app.use("/product-categories", productCategoriesRouter);
 app.use("/stock-movements", stockMovementsRouter);
-
+app.use("/reports", reportsRouter);
 app.use(errorHandler);
 
 export default app;
