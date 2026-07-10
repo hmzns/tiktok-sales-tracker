@@ -8,7 +8,9 @@ import expensesRouter from "./routes/expenses";
 import productCategoriesRouter from "./routes/productCategories";
 import stockMovementsRouter from "./routes/stockMovements";
 import reportsRouter from "./routes/reports";
+import apiDocsRouter from "./routes/apiDocs";
 import { errorHandler } from "./middleware/errorHandler";
+import { notFound } from "./middleware/notFound";
 
 const app = express();
 
@@ -22,6 +24,9 @@ app.use("/expenses", expensesRouter);
 app.use("/product-categories", productCategoriesRouter);
 app.use("/stock-movements", stockMovementsRouter);
 app.use("/reports", reportsRouter);
+app.use("/api-docs", apiDocsRouter);
+
+app.use(notFound);
 app.use(errorHandler);
 
 export default app;
