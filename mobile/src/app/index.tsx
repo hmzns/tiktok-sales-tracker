@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { getDashboardSummary } from "../api/dashboard";
+import { Link } from "expo-router";
 
 type DashboardData = {
   revenue: number;
@@ -104,6 +105,10 @@ export default function HomeScreen() {
       <Text style={styles.subtitle}>
         Dashboard for {currentMonth}/{currentYear}
       </Text>
+
+      <Link href="/products" style={styles.linkButton}>
+        View Products
+      </Link>
 
       <View style={styles.grid}>
         <View style={styles.card}>
@@ -316,5 +321,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "800",
     color: "red",
+  },
+  linkButton: {
+    backgroundColor: "#111",
+    color: "#fff",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    fontSize: 15,
+    fontWeight: "700",
+    textAlign: "center",
+    marginBottom: 16,
   },
 });
