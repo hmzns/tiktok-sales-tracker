@@ -17,6 +17,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    service: "sales-tracker-api",
+  });
+});
+
 app.use('/products', productsRouter);
 app.use("/orders", ordersRouter);
 app.use("/dashboard", dashboardRouter);
