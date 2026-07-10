@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -8,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { getProducts, Product } from "../api/products";
+import { router } from "expo-router";
 
 const formatRM = (value: number) => {
   return `RM ${value.toFixed(2)}`;
@@ -75,6 +77,13 @@ export default function ProductsScreen() {
     >
       <Text style={styles.title}>Products</Text>
       <Text style={styles.subtitle}>Total products: {total}</Text>
+
+      <Pressable
+        style={styles.addButton}
+        onPress={() => router.push("/add-product")}
+      >
+        <Text style={styles.addButtonText}>Add Product</Text>
+      </Pressable>
 
       {products.length === 0 ? (
         <View style={styles.emptyBox}>
@@ -285,5 +294,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: "red",
+  },
+  addButton: {
+    backgroundColor: "#111",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  addButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "800",
   },
 });

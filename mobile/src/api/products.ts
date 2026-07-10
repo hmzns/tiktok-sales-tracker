@@ -29,6 +29,15 @@ export type ProductsResponse = {
   };
 };
 
+export type CreateProductInput = {
+  name: string;
+  sku: string;
+  costPrice: number;
+  sellPrice: number;
+  stock: number;
+  categoryId?: string | null;
+};
+
 export const getProducts = async (
   page = 1,
   limit = 20
@@ -44,4 +53,9 @@ export const getProducts = async (
     products: response.data.data,
     meta: response.data.meta,
   };
+};
+
+export const createProduct = async (data: CreateProductInput) => {
+  const response = await apiClient.post("/products", data);
+  return response.data.data;
 };

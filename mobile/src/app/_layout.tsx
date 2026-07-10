@@ -34,6 +34,13 @@ export default function RootLayout() {
             title: "Explore",
           }}
         />
+
+        <Stack.Screen
+          name="add-product"
+          options={{
+            title: "Add Product",
+          }}
+        />
       </Stack>
     </ThemeProvider>
   );
