@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -8,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { getDashboardSummary } from "../api/dashboard";
-import { Link } from "expo-router";
+import { Link, router } from "expo-router";
 
 type DashboardData = {
   revenue: number;
@@ -106,10 +107,20 @@ export default function HomeScreen() {
         Dashboard for {currentMonth}/{currentYear}
       </Text>
 
-      <Link href="/products" style={styles.linkButton}>
-        View Products
-      </Link>
+      <Pressable
+        style={styles.linkButton}
+        onPress={() => router.push("/products" as any)}
+      >
+        <Text style={styles.linkButtonText}>View Products</Text>
+      </Pressable>
 
+      <Pressable
+        style={styles.linkButton}
+        onPress={() => router.push("/orders" as any)}
+      >
+        <Text style={styles.linkButtonText}>View Orders</Text>
+      </Pressable>
+      
       <View style={styles.grid}>
         <View style={styles.card}>
           <Text style={styles.cardLabel}>Revenue</Text>
@@ -323,14 +334,16 @@ const styles = StyleSheet.create({
     color: "red",
   },
   linkButton: {
-    backgroundColor: "#111",
+  backgroundColor: "#111",
+  paddingVertical: 12,
+  paddingHorizontal: 16,
+  borderRadius: 10,
+  alignItems: "center",
+  marginBottom: 10,
+  },
+  linkButtonText: {
     color: "#fff",
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 10,
     fontSize: 15,
-    fontWeight: "700",
-    textAlign: "center",
-    marginBottom: 16,
+    fontWeight: "800",
   },
 });

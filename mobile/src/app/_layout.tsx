@@ -41,6 +41,13 @@ export default function RootLayout() {
             title: "Add Product",
           }}
         />
+        
+        <Stack.Screen
+          name="orders"
+          options={{
+            title: "Orders",
+          }}
+        />
       </Stack>
     </ThemeProvider>
   );
