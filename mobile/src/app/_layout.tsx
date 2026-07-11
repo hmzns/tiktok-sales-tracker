@@ -55,6 +55,20 @@ export default function RootLayout() {
             title: "Create Order",
           }}
         />
+
+        <Stack.Screen
+          name="expenses"
+          options={{
+            title: "Expenses",
+          }}
+        />
+
+        <Stack.Screen
+          name="add-expense"
+          options={{
+            title: "Add Expense",
+          }}
+        />
       </Stack>
     </ThemeProvider>
   );
