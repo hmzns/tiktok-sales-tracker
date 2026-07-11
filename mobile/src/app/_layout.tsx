@@ -83,6 +83,13 @@ export default function RootLayout() {
             title: "Adjust Stock",
           }}
         />
+
+        <Stack.Screen
+          name="reports"
+          options={{
+            title: "Reports",
+          }}
+        />
       </Stack>
     </ThemeProvider>
   );
