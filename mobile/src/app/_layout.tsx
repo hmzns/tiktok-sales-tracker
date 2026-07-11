@@ -69,6 +69,20 @@ export default function RootLayout() {
             title: "Add Expense",
           }}
         />
+
+        <Stack.Screen
+          name="stock-movements"
+          options={{
+            title: "Stock Movements",
+          }}
+        />
+
+        <Stack.Screen
+          name="adjust-stock"
+          options={{
+            title: "Adjust Stock",
+          }}
+        />
       </Stack>
     </ThemeProvider>
   );

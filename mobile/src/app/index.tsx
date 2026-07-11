@@ -127,6 +127,13 @@ export default function HomeScreen() {
       >
         <Text style={styles.linkButtonText}>View Expenses</Text>
       </Pressable>
+
+      <Pressable
+        style={styles.linkButton}
+        onPress={() => router.push("/stock-movements" as any)}
+      >
+        <Text style={styles.linkButtonText}>View Stock Movements</Text>
+      </Pressable>
       
       <View style={styles.grid}>
         <View style={styles.card}>
