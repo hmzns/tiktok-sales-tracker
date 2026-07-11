@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -8,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { getOrders, Order } from "../api/orders";
+import { router } from "expo-router";
 
 const formatRM = (value: number) => {
   return `RM ${value.toFixed(2)}`;
@@ -97,6 +99,13 @@ export default function OrdersScreen() {
     >
       <Text style={styles.title}>Orders</Text>
       <Text style={styles.subtitle}>Total orders: {total}</Text>
+
+      <Pressable
+        style={styles.addButton}
+        onPress={() => router.push("/add-order" as any)}
+      >
+        <Text style={styles.addButtonText}>Create Order</Text>
+      </Pressable>
 
       {orders.length === 0 ? (
         <View style={styles.emptyBox}>
@@ -320,6 +329,18 @@ const styles = StyleSheet.create({
   },
   itemQty: {
     fontSize: 14,
+    fontWeight: "800",
+  },
+  addButton: {
+    backgroundColor: "#111",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  addButtonText: {
+    color: "#fff",
+    fontSize: 15,
     fontWeight: "800",
   },
 });

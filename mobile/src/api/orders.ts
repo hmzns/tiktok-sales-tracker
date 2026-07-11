@@ -46,6 +46,25 @@ export type OrdersResponse = {
   };
 };
 
+export type CreateOrderInput = {
+  orderNumber?: string;
+  platform?: "MANUAL" | "TIKTOK_SHOP" | "SHOPEE" | "LAZADA";
+  status?: "PENDING" | "PAID" | "PACKING" | "SHIPPED" | "DELIVERED";
+  customerName?: string;
+  discount?: number;
+  shippingFee?: number;
+  items: {
+    productId: string;
+    quantity: number;
+    sellPrice?: number;
+  }[];
+};
+
+export const createOrder = async (data: CreateOrderInput) => {
+  const response = await apiClient.post("/orders", data);
+  return response.data.data;
+};
+
 export const getOrders = async (
   page = 1,
   limit = 20

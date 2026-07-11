@@ -48,6 +48,13 @@ export default function RootLayout() {
             title: "Orders",
           }}
         />
+
+        <Stack.Screen
+          name="add-order"
+          options={{
+            title: "Create Order",
+          }}
+        />
       </Stack>
     </ThemeProvider>
   );
