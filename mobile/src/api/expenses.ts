@@ -42,13 +42,25 @@ export type CreateExpenseInput = {
 
 export const getExpenses = async (
   page = 1,
-  limit = 20
+  limit = 20,
+  search = "",
+  category: ExpenseCategory | "ALL" = "ALL"
 ): Promise<ExpensesResponse> => {
+  const params: Record<string, string | number> = {
+    page,
+    limit,
+  };
+
+  if (search.trim()) {
+    params.search = search.trim();
+  }
+
+  if (category !== "ALL") {
+    params.category = category;
+  }
+
   const response = await apiClient.get("/expenses", {
-    params: {
-      page,
-      limit,
-    },
+    params,
   });
 
   return {

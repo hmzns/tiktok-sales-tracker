@@ -7,9 +7,10 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
-import { Expense, getExpenses } from "../../api/expenses";
+import { Expense, ExpenseCategory, getExpenses } from "../../api/expenses";
 
 const formatRM = (value: number) => {
   return `RM ${value.toFixed(2)}`;
@@ -25,19 +26,33 @@ const formatDate = (dateString: string) => {
   });
 };
 
+const CATEGORY_FILTERS: (ExpenseCategory | "ALL")[] = [
+  "ALL",
+  "PACKAGING",
+  "ADS",
+  "SHIPPING",
+  "SUPPLIES",
+  "EQUIPMENT",
+  "SALARY",
+  "OTHER",
+];
+
 export default function ExpensesScreen() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [total, setTotal] = useState(0);
   const [totalAmount, setTotalAmount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] =
+    useState<ExpenseCategory | "ALL">("ALL");
   const [error, setError] = useState<string | null>(null);
 
   const loadExpenses = async () => {
     try {
       setError(null);
 
-      const result = await getExpenses(1, 20);
+      const result = await getExpenses(1, 20, search, categoryFilter);
 
       setExpenses(result.expenses);
       setTotal(result.meta.total);
@@ -106,6 +121,50 @@ export default function ExpensesScreen() {
         onPress={() => router.push("/add-expense" as any)}
       >
         <Text style={styles.addButtonText}>Add Expense</Text>
+      </Pressable>
+
+      <TextInput
+        style={styles.searchInput}
+        placeholder="Search expense title..."
+        value={search}
+        onChangeText={setSearch}
+        onSubmitEditing={loadExpenses}
+      />
+
+      <Pressable style={styles.searchButton} onPress={loadExpenses}>
+        <Text style={styles.searchButtonText}>Search</Text>
+      </Pressable>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterScroll}
+      >
+        {CATEGORY_FILTERS.map((category) => (
+          <Pressable
+            key={category}
+            style={[
+              styles.filterChip,
+              categoryFilter === category && styles.activeFilterChip,
+            ]}
+            onPress={() => {
+              setCategoryFilter(category);
+            }}
+          >
+            <Text
+              style={[
+                styles.filterChipText,
+                categoryFilter === category && styles.activeFilterChipText,
+              ]}
+            >
+              {category}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+
+      <Pressable style={styles.searchButton} onPress={loadExpenses}>
+        <Text style={styles.searchButtonText}>Apply Filter</Text>
       </Pressable>
 
       {expenses.length === 0 ? (
@@ -281,5 +340,49 @@ const styles = StyleSheet.create({
   description: {
     fontSize: 13,
     color: "#555",
+  },
+  searchInput: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    marginBottom: 10,
+  },
+  searchButton: {
+    backgroundColor: "#111",
+    borderRadius: 10,
+    padding: 12,
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  searchButtonText: {
+    color: "#fff",
+    fontWeight: "800",
+  },
+  filterScroll: {
+    marginBottom: 10,
+  },
+  filterChip: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginRight: 8,
+  },
+  activeFilterChip: {
+    backgroundColor: "#111",
+    borderColor: "#111",
+  },
+  filterChipText: {
+    color: "#333",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  activeFilterChipText: {
+    color: "#fff",
   },
 });
