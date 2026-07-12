@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { Expense, getExpenses } from "../api/expenses";
+import { Expense, getExpenses } from "../../api/expenses";
 
 const formatRM = (value: number) => {
   return `RM ${value.toFixed(2)}`;

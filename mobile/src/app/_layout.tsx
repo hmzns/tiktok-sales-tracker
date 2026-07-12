@@ -15,23 +15,9 @@ export default function RootLayout() {
 
       <Stack>
         <Stack.Screen
-          name="index"
+          name="(tabs)"
           options={{
-            title: "Dashboard",
-          }}
-        />
-
-        <Stack.Screen
-          name="products"
-          options={{
-            title: "Products",
-          }}
-        />
-
-        <Stack.Screen
-          name="explore"
-          options={{
-            title: "Explore",
+            headerShown: false,
           }}
         />
 
@@ -41,25 +27,11 @@ export default function RootLayout() {
             title: "Add Product",
           }}
         />
-        
-        <Stack.Screen
-          name="orders"
-          options={{
-            title: "Orders",
-          }}
-        />
 
         <Stack.Screen
           name="add-order"
           options={{
             title: "Create Order",
-          }}
-        />
-
-        <Stack.Screen
-          name="expenses"
-          options={{
-            title: "Expenses",
           }}
         />
 
@@ -81,13 +53,6 @@ export default function RootLayout() {
           name="adjust-stock"
           options={{
             title: "Adjust Stock",
-          }}
-        />
-
-        <Stack.Screen
-          name="reports"
-          options={{
-            title: "Reports",
           }}
         />
       </Stack>

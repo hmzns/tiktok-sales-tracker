@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { getDashboardSummary } from "../api/dashboard";
+import { getDashboardSummary } from "../../api/dashboard";
 import { Link, router } from "expo-router";
 
 type DashboardData = {

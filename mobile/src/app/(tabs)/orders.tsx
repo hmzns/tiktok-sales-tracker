@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { getOrders, Order } from "../api/orders";
+import { getOrders, Order } from "../../api/orders";
 import { router } from "expo-router";
 
 const formatRM = (value: number) => {

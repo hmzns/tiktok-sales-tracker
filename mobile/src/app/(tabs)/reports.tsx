@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { getMonthlyReport, MonthlyReport } from "../api/reports";
+import { getMonthlyReport, MonthlyReport } from "../../api/reports";
 
 const formatRM = (value: number) => {
   return `RM ${value.toFixed(2)}`;
