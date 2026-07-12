@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { getDashboardSummary } from "../../api/dashboard";
-import { Link, router } from "expo-router";
+import { router } from "expo-router";
 
 type DashboardData = {
   revenue: number;
@@ -109,37 +109,9 @@ export default function HomeScreen() {
 
       <Pressable
         style={styles.linkButton}
-        onPress={() => router.push("/products" as any)}
-      >
-        <Text style={styles.linkButtonText}>View Products</Text>
-      </Pressable>
-
-      <Pressable
-        style={styles.linkButton}
-        onPress={() => router.push("/orders" as any)}
-      >
-        <Text style={styles.linkButtonText}>View Orders</Text>
-      </Pressable>
-
-      <Pressable
-        style={styles.linkButton}
-        onPress={() => router.push("/expenses" as any)}
-      >
-        <Text style={styles.linkButtonText}>View Expenses</Text>
-      </Pressable>
-
-      <Pressable
-        style={styles.linkButton}
         onPress={() => router.push("/stock-movements" as any)}
       >
-        <Text style={styles.linkButtonText}>View Stock Movements</Text>
-      </Pressable>
-
-      <Pressable
-        style={styles.linkButton}
-        onPress={() => router.push("/reports" as any)}
-      >
-        <Text style={styles.linkButtonText}>View Reports</Text>
+        <Text style={styles.linkButtonText}>Stock Activity & Adjustment</Text>
       </Pressable>
       
       <View style={styles.grid}>

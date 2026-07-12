@@ -103,12 +103,12 @@ export default function StockMovementsScreen() {
         style={styles.addButton}
         onPress={() => router.push("/adjust-stock" as any)}
       >
-        <Text style={styles.addButtonText}>Adjust Stock</Text>
+        <Text style={styles.addButtonText}>Restock / Adjust Stock</Text>
       </Pressable>
 
       {movements.length === 0 ? (
         <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>No stock movements found.</Text>
+          <Text style={styles.emptyText}>No stock movements yet. Restock or create an order to see activity here.</Text>
         </View>
       ) : (
         movements.map((movement) => {
