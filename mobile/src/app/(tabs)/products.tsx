@@ -167,6 +167,18 @@ export default function ProductsScreen() {
               {isLowStock && (
                 <Text style={styles.warningText}>Low stock. Restock soon.</Text>
               )}
+
+              <Pressable
+                style={styles.editButton}
+                onPress={() =>
+                  router.push({
+                    pathname: "/edit-product" as any,
+                    params: { productId: product.id },
+                  })
+                }
+              >
+                <Text style={styles.editButtonText}>Edit Product</Text>
+              </Pressable>
             </View>
           );
         })
@@ -340,6 +352,17 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   searchButtonText: {
+    color: "#fff",
+    fontWeight: "800",
+  },
+  editButton: {
+    backgroundColor: "#111",
+    borderRadius: 10,
+    padding: 12,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  editButtonText: {
     color: "#fff",
     fontWeight: "800",
   },

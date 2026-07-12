@@ -61,3 +61,25 @@ export const createProduct = async (data: CreateProductInput) => {
   const response = await apiClient.post("/products", data);
   return response.data.data;
 };
+
+export type UpdateProductInput = {
+  name?: string;
+  sku?: string;
+  costPrice?: number;
+  sellPrice?: number;
+  stock?: number;
+  categoryId?: string | null;
+};
+
+export const getProductById = async (productId: string): Promise<Product> => {
+  const response = await apiClient.get(`/products/${productId}`);
+  return response.data.data;
+};
+
+export const updateProduct = async (
+  productId: string,
+  data: UpdateProductInput
+) => {
+  const response = await apiClient.put(`/products/${productId}`, data);
+  return response.data.data;
+};
