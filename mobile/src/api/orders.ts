@@ -21,7 +21,7 @@ export type Order = {
   orderNumber: string | null;
   tiktokOrderId: string | null;
   platform: string;
-  status: string;
+  status: OrderStatus;
   customerName: string | null;
   subtotal: number;
   discount: number;
@@ -60,6 +60,15 @@ export type CreateOrderInput = {
   }[];
 };
 
+export type OrderStatus =
+  | "PENDING"
+  | "PAID"
+  | "PACKING"
+  | "SHIPPED"
+  | "DELIVERED"
+  | "CANCELLED"
+  | "REFUNDED";
+
 export const createOrder = async (data: CreateOrderInput) => {
   const response = await apiClient.post("/orders", data);
   return response.data.data;
@@ -80,4 +89,15 @@ export const getOrders = async (
     orders: response.data.data,
     meta: response.data.meta,
   };
+};
+
+export const updateOrderStatus = async (
+  orderId: string,
+  status: OrderStatus
+) => {
+  const response = await apiClient.patch(`/orders/${orderId}/status`, {
+    status,
+  });
+
+  return response.data.data;
 };

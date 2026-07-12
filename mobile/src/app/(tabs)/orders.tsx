@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -8,7 +9,12 @@ import {
   Text,
   View,
 } from "react-native";
-import { getOrders, Order } from "../../api/orders";
+import {
+  getOrders,
+  Order,
+  OrderStatus,
+  updateOrderStatus,
+} from "../../api/orders";
 import { router } from "expo-router";
 
 const formatRM = (value: number) => {
@@ -67,6 +73,18 @@ export default function OrdersScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     loadOrders();
+  };
+
+  const handleStatusUpdate = async (orderId: string, status: OrderStatus) => {
+    try {
+      await updateOrderStatus(orderId, status);
+      await loadOrders();
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.message ?? "Failed to update order status";
+
+      Alert.alert("Error", message);
+    }
   };
 
   if (loading) {
@@ -166,6 +184,50 @@ export default function OrdersScreen() {
                   <Text style={styles.itemQty}>x{item.quantity}</Text>
                 </View>
               ))}
+
+              <View style={styles.actionRow}>
+                {order.status !== "SHIPPED" &&
+                order.status !== "DELIVERED" &&
+                order.status !== "CANCELLED" &&
+                order.status !== "REFUNDED" ? (
+                  <Pressable
+                    style={styles.smallButton}
+                    onPress={() => handleStatusUpdate(order.id, "SHIPPED")}
+                  >
+                    <Text style={styles.smallButtonText}>Mark Shipped</Text>
+                  </Pressable>
+                ) : null}
+
+                {order.status === "SHIPPED" ? (
+                  <Pressable
+                    style={styles.smallButton}
+                    onPress={() => handleStatusUpdate(order.id, "DELIVERED")}
+                  >
+                    <Text style={styles.smallButtonText}>Mark Delivered</Text>
+                  </Pressable>
+                ) : null}
+
+                {order.status !== "CANCELLED" &&
+                order.status !== "REFUNDED" &&
+                order.status !== "DELIVERED" ? (
+                  <Pressable
+                    style={styles.dangerButton}
+                    onPress={() => handleStatusUpdate(order.id, "CANCELLED")}
+                  >
+                    <Text style={styles.dangerButtonText}>Cancel</Text>
+                  </Pressable>
+                ) : null}
+
+                {order.status !== "CANCELLED" &&
+                order.status !== "REFUNDED" ? (
+                  <Pressable
+                    style={styles.warningButton}
+                    onPress={() => handleStatusUpdate(order.id, "REFUNDED")}
+                  >
+                    <Text style={styles.warningButtonText}>Refund</Text>
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
           </View>
         ))
@@ -341,6 +403,48 @@ const styles = StyleSheet.create({
   addButtonText: {
     color: "#fff",
     fontSize: 15,
+    fontWeight: "800",
+  },
+  actionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+  },
+  smallButton: {
+    backgroundColor: "#111",
+    borderRadius: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+  },
+  smallButtonText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  dangerButton: {
+    backgroundColor: "#ffe5e5",
+    borderRadius: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+  },
+  dangerButtonText: {
+    color: "red",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  warningButton: {
+    backgroundColor: "#fff4d6",
+    borderRadius: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+  },
+  warningButtonText: {
+    color: "#8a5a00",
+    fontSize: 12,
     fontWeight: "800",
   },
 });
