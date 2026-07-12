@@ -40,12 +40,14 @@ export type CreateProductInput = {
 
 export const getProducts = async (
   page = 1,
-  limit = 20
+  limit = 20,
+  search = ""
 ): Promise<ProductsResponse> => {
   const response = await apiClient.get("/products", {
     params: {
       page,
       limit,
+      search,
     },
   });
 

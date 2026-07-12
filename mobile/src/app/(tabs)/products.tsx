@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { getProducts, Product } from "../../api/products";
@@ -21,12 +22,13 @@ export default function ProductsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const loadProducts = async () => {
     try {
       setError(null);
 
-      const result = await getProducts(1, 20);
+      const result = await getProducts(1, 20, search);
 
       setProducts(result.products);
       setTotal(result.meta.total);
@@ -83,6 +85,18 @@ export default function ProductsScreen() {
         onPress={() => router.push("/add-product")}
       >
         <Text style={styles.addButtonText}>Add Product</Text>
+      </Pressable>
+
+      <TextInput
+        style={styles.searchInput}
+        placeholder="Search by product name or SKU..."
+        value={search}
+        onChangeText={setSearch}
+        onSubmitEditing={loadProducts}
+      />
+
+      <Pressable style={styles.searchButton} onPress={loadProducts}>
+        <Text style={styles.searchButtonText}>Search</Text>
       </Pressable>
 
       {products.length === 0 ? (
@@ -305,6 +319,26 @@ const styles = StyleSheet.create({
   addButtonText: {
     color: "#fff",
     fontSize: 15,
+    fontWeight: "800",
+  },
+  searchInput: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    marginBottom: 10,
+  },
+  searchButton: {
+    backgroundColor: "#111",
+    borderRadius: 10,
+    padding: 12,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  searchButtonText: {
+    color: "#fff",
     fontWeight: "800",
   },
 });
