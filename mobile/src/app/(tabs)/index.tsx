@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { getDashboardSummary } from "../../api/dashboard";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 
 type DashboardData = {
   revenue: number;
@@ -65,9 +65,11 @@ export default function HomeScreen() {
     }
   };
 
-  useEffect(() => {
-    loadDashboard();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadDashboard();
+    }, [])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { getProducts, Product } from "../../api/products";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 
 const formatRM = (value: number) => {
   return `RM ${value.toFixed(2)}`;
@@ -40,9 +40,11 @@ export default function ProductsScreen() {
     }
   };
 
-  useEffect(() => {
-    loadProducts();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadProducts();
+    }, [])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);

@@ -1,5 +1,5 @@
-import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -59,9 +59,11 @@ export default function StockMovementsScreen() {
     }
   };
 
-  useEffect(() => {
-    loadMovements();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadMovements();
+    }, [])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);

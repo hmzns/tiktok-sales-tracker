@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { getMonthlyReport, MonthlyReport } from "../../api/reports";
+import { router, useFocusEffect } from "expo-router";
 
 const formatRM = (value: number) => {
   return `RM ${value.toFixed(2)}`;
@@ -54,10 +55,12 @@ export default function ReportsScreen() {
     }
   };
 
-  useEffect(() => {
+  useFocusEffect(
+  useCallback(() => {
     setLoading(true);
     loadReport();
-  }, [year, month]);
+  }, [year, month])
+);
 
   const onRefresh = () => {
     setRefreshing(true);
