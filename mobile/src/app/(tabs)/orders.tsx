@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import {
@@ -43,18 +44,31 @@ const getStatusStyle = (status: string) => {
   return styles.neutralStatus;
 };
 
+const STATUS_FILTERS: (OrderStatus | "ALL")[] = [
+  "ALL",
+  "PENDING",
+  "PAID",
+  "PACKING",
+  "SHIPPED",
+  "DELIVERED",
+  "CANCELLED",
+  "REFUNDED",
+];
+
 export default function OrdersScreen() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<OrderStatus | "ALL">("ALL");
   const [error, setError] = useState<string | null>(null);
 
   const loadOrders = async () => {
     try {
       setError(null);
 
-      const result = await getOrders(1, 20);
+      const result = await getOrders(1, 20, search, statusFilter);
 
       setOrders(result.orders);
       setTotal(result.meta.total);
@@ -123,6 +137,50 @@ export default function OrdersScreen() {
         onPress={() => router.push("/add-order" as any)}
       >
         <Text style={styles.addButtonText}>Create Order</Text>
+      </Pressable>
+
+      <TextInput
+        style={styles.searchInput}
+        placeholder="Search by customer or order number..."
+        value={search}
+        onChangeText={setSearch}
+        onSubmitEditing={loadOrders}
+      />
+
+      <Pressable style={styles.searchButton} onPress={loadOrders}>
+        <Text style={styles.searchButtonText}>Search</Text>
+      </Pressable>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterScroll}
+      >
+        {STATUS_FILTERS.map((status) => (
+          <Pressable
+            key={status}
+            style={[
+              styles.filterChip,
+              statusFilter === status && styles.activeFilterChip,
+            ]}
+            onPress={() => {
+              setStatusFilter(status);
+            }}
+          >
+            <Text
+              style={[
+                styles.filterChipText,
+                statusFilter === status && styles.activeFilterChipText,
+              ]}
+            >
+              {status}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+
+      <Pressable style={styles.searchButton} onPress={loadOrders}>
+        <Text style={styles.searchButtonText}>Apply Filter</Text>
       </Pressable>
 
       {orders.length === 0 ? (
@@ -446,5 +504,49 @@ const styles = StyleSheet.create({
     color: "#8a5a00",
     fontSize: 12,
     fontWeight: "800",
+  },
+  searchInput: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    marginBottom: 10,
+  },
+  searchButton: {
+    backgroundColor: "#111",
+    borderRadius: 10,
+    padding: 12,
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  searchButtonText: {
+    color: "#fff",
+    fontWeight: "800",
+  },
+  filterScroll: {
+    marginBottom: 10,
+  },
+  filterChip: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginRight: 8,
+  },
+  activeFilterChip: {
+    backgroundColor: "#111",
+    borderColor: "#111",
+  },
+  filterChipText: {
+    color: "#333",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  activeFilterChipText: {
+    color: "#fff",
   },
 });

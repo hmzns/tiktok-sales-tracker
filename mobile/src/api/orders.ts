@@ -76,13 +76,25 @@ export const createOrder = async (data: CreateOrderInput) => {
 
 export const getOrders = async (
   page = 1,
-  limit = 20
+  limit = 20,
+  search = "",
+  status: OrderStatus | "ALL" = "ALL"
 ): Promise<OrdersResponse> => {
+  const params: Record<string, string | number> = {
+    page,
+    limit,
+  };
+
+  if (search.trim()) {
+    params.search = search.trim();
+  }
+
+  if (status !== "ALL") {
+    params.status = status;
+  }
+
   const response = await apiClient.get("/orders", {
-    params: {
-      page,
-      limit,
-    },
+    params,
   });
 
   return {
