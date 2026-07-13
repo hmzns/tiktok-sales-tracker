@@ -2,7 +2,9 @@ import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -10,7 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Expense, ExpenseCategory, getExpenses } from "../../api/expenses";
+import { Expense, ExpenseCategory, deleteExpense, getExpenses } from "../../api/expenses";
 
 const formatRM = (value: number) => {
   return `RM ${value.toFixed(2)}`;
@@ -78,6 +80,48 @@ export default function ExpensesScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     loadExpenses();
+  };
+
+  const handleDeleteExpense = async (expenseId: string) => {
+    const deleteSelectedExpense = async () => {
+      try {
+        await deleteExpense(expenseId);
+        await loadExpenses();
+      } catch (err: any) {
+        const message =
+          err?.response?.data?.message ?? "Failed to delete expense";
+
+        Alert.alert("Error", message);
+      }
+    };
+
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm(
+        "Are you sure you want to delete this expense?"
+      );
+
+      if (confirmed) {
+        await deleteSelectedExpense();
+      }
+
+      return;
+    }
+
+    Alert.alert(
+      "Delete Expense",
+      "Are you sure you want to delete this expense?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: deleteSelectedExpense,
+        },
+      ]
+    );
   };
 
   if (loading) {
@@ -206,6 +250,13 @@ export default function ExpensesScreen() {
               }
             >
               <Text style={styles.editButtonText}>Edit Expense</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.deleteButton}
+              onPress={() => handleDeleteExpense(expense.id)}
+            >
+              <Text style={styles.deleteButtonText}>Delete Expense</Text>
             </Pressable>
           </View>
         ))
@@ -406,6 +457,17 @@ const styles = StyleSheet.create({
   },
   editButtonText: {
     color: "#fff",
+    fontWeight: "800",
+  },
+  deleteButton: {
+    backgroundColor: "#ffecec",
+    borderRadius: 10,
+    padding: 12,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  deleteButtonText: {
+    color: "#cc3333",
     fontWeight: "800",
   },
 });

@@ -94,3 +94,8 @@ export const updateExpense = async (
   const response = await apiClient.put(`/expenses/${expenseId}`, data);
   return response.data.data;
 };
+
+export const deleteExpense = async (expenseId: string) => {
+  const response = await apiClient.delete(`/expenses/${expenseId}`);
+  return response.data.data;
+};
