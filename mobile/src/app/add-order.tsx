@@ -38,7 +38,7 @@ export default function AddOrderScreen() {
 
   const loadProducts = async () => {
     try {
-      const result = await getProducts(1, 50);
+      const result = await getProducts(1, 100, "", true);
       setProducts(result.products.filter((product) => product.isActive));
     } catch (err) {
       Alert.alert("Error", "Failed to load products");
@@ -150,7 +150,9 @@ export default function AddOrderScreen() {
             <Text style={styles.smallText}>Loading products...</Text>
           </View>
         ) : products.length === 0 ? (
-          <Text style={styles.emptyText}>No active products found.</Text>
+          <Text style={styles.emptyText}>
+            No active products available. Please activate or add a product first.
+          </Text>
         ) : (
           <View style={styles.productList}>
             {products.map((product) => {
@@ -309,8 +311,12 @@ const styles = StyleSheet.create({
     color: "#666",
   },
   emptyText: {
-    fontSize: 14,
-    color: "#777",
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 14,
+    color: "#666",
+    marginBottom: 14,
+    textAlign: "center",
   },
   productList: {
     gap: 10,

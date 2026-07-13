@@ -41,14 +41,24 @@ export type CreateProductInput = {
 export const getProducts = async (
   page = 1,
   limit = 20,
-  search = ""
+  search = "",
+  isActive?: boolean
 ): Promise<ProductsResponse> => {
+  const params: Record<string, string | number | boolean> = {
+    page,
+    limit,
+  };
+
+  if (search.trim()) {
+    params.search = search.trim();
+  }
+
+  if (typeof isActive === "boolean") {
+    params.isActive = isActive;
+  }
+
   const response = await apiClient.get("/products", {
-    params: {
-      page,
-      limit,
-      search,
-    },
+    params,
   });
 
   return {
