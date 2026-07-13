@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 
 import {
   createProductCategory,
@@ -154,6 +154,18 @@ export default function ProductCategoriesScreen() {
             >
               {category.isActive ? "Active" : "Inactive"}
             </Text>
+
+            <Pressable
+							style={styles.editButton}
+							onPress={() =>
+									router.push({
+									pathname: "/edit-product-category" as any,
+									params: { categoryId: category.id },
+									})
+							}
+							>
+							<Text style={styles.editButtonText}>Edit Category</Text>
+							</Pressable>
           </View>
         ))
       )}
@@ -268,4 +280,15 @@ const styles = StyleSheet.create({
   inactiveText: {
     color: "#cc3333",
   },
+	editButton: {
+		backgroundColor: "#111",
+		borderRadius: 10,
+		padding: 12,
+		alignItems: "center",
+		marginTop: 12,
+	},
+	editButtonText: {
+		color: "#fff",
+		fontWeight: "800",
+	},
 });
