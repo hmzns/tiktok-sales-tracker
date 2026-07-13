@@ -30,8 +30,8 @@ export default function AddProductScreen() {
 
   const loadCategories = async () => {
     try {
-      const result = await getProductCategories();
-      setCategories(result.filter((category) => category.isActive));
+      const categoryList = await getProductCategories();
+      setCategories(categoryList.filter((category) => category.isActive));
     } catch (err) {
       Alert.alert("Error", "Failed to load categories");
     } finally {

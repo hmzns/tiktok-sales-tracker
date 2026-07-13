@@ -47,7 +47,11 @@ export default function EditProductScreen() {
         getProductCategories(),
       ]);
 
-      setCategories(categoryList);
+      setCategories(
+        categoryList.filter(
+          (category) => category.isActive || category.id === product.categoryId
+        )
+      );
 
       setName(product.name);
       setSku(product.sku);
@@ -207,6 +211,7 @@ export default function EditProductScreen() {
             ]}
           >
             {category.name}
+            {!category.isActive ? " (Inactive)" : ""}
           </Text>
         </Pressable>
       ))}
