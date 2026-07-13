@@ -31,4 +31,6 @@ export const createProductSchema = z.object({
     .nullable(),
 });
 
-export const updateProductSchema = createProductSchema.partial();
+export const updateProductSchema = createProductSchema.partial().extend({
+  isActive: z.boolean().optional(),
+});

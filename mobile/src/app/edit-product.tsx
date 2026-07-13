@@ -31,6 +31,7 @@ export default function EditProductScreen() {
   const [sellPrice, setSellPrice] = useState("");
   const [stock, setStock] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [isActive, setIsActive] = useState(true);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -54,6 +55,7 @@ export default function EditProductScreen() {
       setSellPrice(String(product.sellPrice));
       setStock(String(product.stock));
       setCategoryId(product.categoryId);
+      setIsActive(product.isActive);
     } catch (err: any) {
       const message =
         err?.response?.data?.message ?? "Failed to load product";
@@ -95,6 +97,7 @@ export default function EditProductScreen() {
         sellPrice: parsedSellPrice,
         stock: parsedStock,
         categoryId,
+        isActive,
       });
 
       router.replace("/products" as any);
@@ -208,6 +211,44 @@ export default function EditProductScreen() {
         </Pressable>
       ))}
 
+      <Text style={styles.label}>Product Status</Text>
+
+      <View style={styles.statusRow}>
+        <Pressable
+          style={[
+          styles.statusButton,
+          isActive && styles.activeStatusButton,
+        ]}
+        onPress={() => setIsActive(true)}
+      >
+        <Text
+          style={[
+            styles.statusButtonText,
+            isActive && styles.activeStatusButtonText,
+          ]}
+        >
+          Active
+        </Text>
+      </Pressable>
+
+      <Pressable
+        style={[
+          styles.statusButton,
+          !isActive && styles.inactiveStatusButton,
+        ]}
+        onPress={() => setIsActive(false)}
+      >
+        <Text
+          style={[
+            styles.statusButtonText,
+            !isActive && styles.inactiveStatusButtonText,
+          ]}
+        >
+          Inactive
+        </Text>
+      </Pressable>
+    </View>
+
       <Pressable
         style={[styles.saveButton, saving && styles.disabledButton]}
         onPress={handleUpdateProduct}
@@ -297,4 +338,37 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 15,
   },
+	statusRow: {
+		flexDirection: "row",
+		gap: 10,
+		marginBottom: 16,
+	},
+	statusButton: {
+		flex: 1,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#ddd",
+		borderRadius: 10,
+		padding: 12,
+		alignItems: "center",
+	},
+	activeStatusButton: {
+		backgroundColor: "#e8f8ee",
+		borderColor: "#1f8f46",
+	},
+	inactiveStatusButton: {
+		backgroundColor: "#ffecec",
+		borderColor: "#cc3333",
+	},
+	statusButtonText: {
+		fontSize: 13,
+		fontWeight: "800",
+		color: "#333",
+	},
+	activeStatusButtonText: {
+		color: "#1f8f46",
+	},
+	inactiveStatusButtonText: {
+		color: "#cc3333",
+	},
 });

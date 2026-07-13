@@ -69,6 +69,7 @@ export type UpdateProductInput = {
   sellPrice?: number;
   stock?: number;
   categoryId?: string | null;
+  isActive?: boolean;
 };
 
 export const getProductById = async (productId: string): Promise<Product> => {
