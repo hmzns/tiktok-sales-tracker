@@ -100,6 +100,13 @@ export default function ProductsScreen() {
         <Text style={styles.addButtonText}>Add Product</Text>
       </Pressable>
 
+      <Pressable
+        style={styles.secondaryButton}
+        onPress={() => router.push("/product-categories" as any)}
+      >
+        <Text style={styles.secondaryButtonText}>Manage Categories</Text>
+      </Pressable>
+
       <TextInput
         style={styles.searchInput}
         placeholder="Search by product name or SKU..."
@@ -415,5 +422,18 @@ const styles = StyleSheet.create({
   },
   activeLowStockButtonText: {
     color: "#fff",
+  },
+  secondaryButton: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#111",
+    borderRadius: 10,
+    padding: 12,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  secondaryButtonText: {
+    color: "#111",
+    fontWeight: "800",
   },
 });
