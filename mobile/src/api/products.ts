@@ -94,3 +94,15 @@ export const updateProduct = async (
   const response = await apiClient.put(`/products/${productId}`, data);
   return response.data.data;
 };
+
+export const getLowStockProducts = async (
+  threshold = 5
+): Promise<Product[]> => {
+  const response = await apiClient.get("/products/low-stock", {
+    params: {
+      threshold,
+    },
+  });
+
+  return response.data.data;
+};

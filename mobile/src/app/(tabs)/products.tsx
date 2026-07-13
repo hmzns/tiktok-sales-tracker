@@ -9,7 +9,11 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { getProducts, Product } from "../../api/products";
+import {
+  getLowStockProducts,
+  getProducts,
+  Product,
+} from "../../api/products";
 import { router, useFocusEffect } from "expo-router";
 
 const formatRM = (value: number) => {
@@ -23,15 +27,18 @@ export default function ProductsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [showLowStockOnly, setShowLowStockOnly] = useState(false);
 
   const loadProducts = async () => {
     try {
-      setError(null);
+      if (showLowStockOnly) {
+        const lowStockProducts = await getLowStockProducts(5);
+        setProducts(lowStockProducts);
+        return;
+      }
 
       const result = await getProducts(1, 20, search);
-
       setProducts(result.products);
-      setTotal(result.meta.total);
     } catch (err) {
       setError("Failed to load products");
     } finally {
@@ -45,6 +52,10 @@ export default function ProductsScreen() {
       loadProducts();
     }, [])
   );
+
+  useEffect(() => {
+    loadProducts();
+  }, [showLowStockOnly]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -99,6 +110,25 @@ export default function ProductsScreen() {
 
       <Pressable style={styles.searchButton} onPress={loadProducts}>
         <Text style={styles.searchButtonText}>Search</Text>
+      </Pressable>
+
+      <Pressable
+        style={[
+          styles.lowStockButton,
+          showLowStockOnly && styles.activeLowStockButton,
+        ]}
+        onPress={() => {
+          setShowLowStockOnly((current) => !current);
+        }}
+      >
+        <Text
+          style={[
+            styles.lowStockButtonText,
+            showLowStockOnly && styles.activeLowStockButtonText,
+          ]}
+        >
+          {showLowStockOnly ? "Showing Low Stock" : "Show Low Stock Only"}
+        </Text>
       </Pressable>
 
       {products.length === 0 ? (
@@ -365,5 +395,25 @@ const styles = StyleSheet.create({
   editButtonText: {
     color: "#fff",
     fontWeight: "800",
+  },
+  lowStockButton: {
+    backgroundColor: "#fff4d6",
+    borderWidth: 1,
+    borderColor: "#e0b84d",
+    borderRadius: 10,
+    padding: 12,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  activeLowStockButton: {
+    backgroundColor: "#111",
+    borderColor: "#111",
+  },
+  lowStockButtonText: {
+    color: "#8a5a00",
+    fontWeight: "800",
+  },
+  activeLowStockButtonText: {
+    color: "#fff",
   },
 });
