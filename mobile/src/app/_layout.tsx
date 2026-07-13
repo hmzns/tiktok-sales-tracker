@@ -50,6 +50,13 @@ export default function RootLayout() {
         />
 
         <Stack.Screen
+          name="edit-expense"
+          options={{
+            title: "Edit Expense",
+          }}
+        />
+
+        <Stack.Screen
           name="stock-movements"
           options={{
             title: "Stock Movements",

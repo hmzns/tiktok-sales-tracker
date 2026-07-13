@@ -73,3 +73,24 @@ export const createExpense = async (data: CreateExpenseInput) => {
   const response = await apiClient.post("/expenses", data);
   return response.data.data;
 };
+
+export type UpdateExpenseInput = {
+  title?: string;
+  amount?: number;
+  category?: ExpenseCategory;
+  description?: string;
+  expenseDate?: string;
+};
+
+export const getExpenseById = async (expenseId: string): Promise<Expense> => {
+  const response = await apiClient.get(`/expenses/${expenseId}`);
+  return response.data.data;
+};
+
+export const updateExpense = async (
+  expenseId: string,
+  data: UpdateExpenseInput
+) => {
+  const response = await apiClient.put(`/expenses/${expenseId}`, data);
+  return response.data.data;
+};

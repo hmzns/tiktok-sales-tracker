@@ -195,6 +195,18 @@ export default function ExpensesScreen() {
                 <Text style={styles.description}>{expense.description}</Text>
               </View>
             ) : null}
+
+            <Pressable
+              style={styles.editButton}
+              onPress={() =>
+                router.push({
+                  pathname: "/edit-expense" as any,
+                  params: { expenseId: expense.id },
+                })
+              }
+            >
+              <Text style={styles.editButtonText}>Edit Expense</Text>
+            </Pressable>
           </View>
         ))
       )}
@@ -384,5 +396,16 @@ const styles = StyleSheet.create({
   },
   activeFilterChipText: {
     color: "#fff",
+  },
+  editButton: {
+    backgroundColor: "#111",
+    borderRadius: 10,
+    padding: 12,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  editButtonText: {
+    color: "#fff",
+    fontWeight: "800",
   },
 });
