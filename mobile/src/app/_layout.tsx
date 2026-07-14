@@ -57,6 +57,13 @@ export default function RootLayout() {
         />
 
         <Stack.Screen
+          name="order-detail"
+          options={{
+            title: "Order Detail",
+          }}
+        />
+
+        <Stack.Screen
           name="add-expense"
           options={{
             title: "Add Expense",

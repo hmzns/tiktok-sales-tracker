@@ -113,3 +113,8 @@ export const updateOrderStatus = async (
 
   return response.data.data;
 };
+
+export const getOrderById = async (orderId: string): Promise<Order> => {
+  const response = await apiClient.get(`/orders/${orderId}`);
+  return response.data.data;
+};

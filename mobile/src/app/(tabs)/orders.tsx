@@ -229,6 +229,18 @@ export default function OrdersScreen() {
               </Text>
             </View>
 
+            <Pressable
+              style={styles.detailsButton}
+              onPress={() =>
+                router.push({
+                  pathname: "/order-detail" as any,
+                  params: { orderId: order.id },
+                })
+              }
+            >
+              <Text style={styles.detailsButtonText}>View Details</Text>
+            </Pressable>
+
             <View style={styles.itemsBox}>
               <Text style={styles.itemsTitle}>Items</Text>
 
@@ -548,5 +560,18 @@ const styles = StyleSheet.create({
   },
   activeFilterChipText: {
     color: "#fff",
+  },
+  detailsButton: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#111",
+    borderRadius: 10,
+    padding: 12,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  detailsButtonText: {
+    color: "#111",
+    fontWeight: "800",
   },
 });
