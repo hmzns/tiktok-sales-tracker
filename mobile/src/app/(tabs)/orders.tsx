@@ -241,64 +241,7 @@ export default function OrdersScreen() {
               <Text style={styles.detailsButtonText}>View Details</Text>
             </Pressable>
 
-            <View style={styles.itemsBox}>
-              <Text style={styles.itemsTitle}>Items</Text>
-
-              {order.items.map((item) => (
-                <View key={item.id} style={styles.itemRow}>
-                  <View style={styles.flexItem}>
-                    <Text style={styles.itemName}>{item.product.name}</Text>
-                    <Text style={styles.itemSku}>SKU: {item.product.sku}</Text>
-                  </View>
-
-                  <Text style={styles.itemQty}>x{item.quantity}</Text>
-                </View>
-              ))}
-
-              <View style={styles.actionRow}>
-                {order.status !== "SHIPPED" &&
-                order.status !== "DELIVERED" &&
-                order.status !== "CANCELLED" &&
-                order.status !== "REFUNDED" ? (
-                  <Pressable
-                    style={styles.smallButton}
-                    onPress={() => handleStatusUpdate(order.id, "SHIPPED")}
-                  >
-                    <Text style={styles.smallButtonText}>Mark Shipped</Text>
-                  </Pressable>
-                ) : null}
-
-                {order.status === "SHIPPED" ? (
-                  <Pressable
-                    style={styles.smallButton}
-                    onPress={() => handleStatusUpdate(order.id, "DELIVERED")}
-                  >
-                    <Text style={styles.smallButtonText}>Mark Delivered</Text>
-                  </Pressable>
-                ) : null}
-
-                {order.status !== "CANCELLED" &&
-                order.status !== "REFUNDED" &&
-                order.status !== "DELIVERED" ? (
-                  <Pressable
-                    style={styles.dangerButton}
-                    onPress={() => handleStatusUpdate(order.id, "CANCELLED")}
-                  >
-                    <Text style={styles.dangerButtonText}>Cancel</Text>
-                  </Pressable>
-                ) : null}
-
-                {order.status !== "CANCELLED" &&
-                order.status !== "REFUNDED" ? (
-                  <Pressable
-                    style={styles.warningButton}
-                    onPress={() => handleStatusUpdate(order.id, "REFUNDED")}
-                  >
-                    <Text style={styles.warningButtonText}>Refund</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            </View>
+            <View style={styles.itemsBox}></View>
           </View>
         ))
       )}
