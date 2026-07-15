@@ -129,5 +129,45 @@ The backend can be deployed as a Node.js web service.
 Production build command:
 
 ```bash
-npm install && npm run build
+npm install
+npm run build
 ```
+Production start command:
+
+```bash
+npm start
+```
+
+Production migration command: 
+
+```bash
+npm run migrate:deploy
+```
+
+Required environment variables:
+
+```text
+DATABASE_URL=
+DIRECT_URL=
+PORT=3000
+```
+
+### Supabase Connection on Render
+
+When deploying the backend to Render with Supabase PostgreSQL, use the Supabase **Session Pooler** connection string for `DATABASE_URL`.
+
+Avoid using the direct database URL like:
+
+```text
+db.<project-ref>.supabase.co:5432
+```
+
+### Mobile
+
+For production or hosted backend testing, update:
+
+```text
+EXPO_PUBLIC_API_URL=https://your-backend-url.com
+```
+
+Do not commit real ```.env ``` files.
