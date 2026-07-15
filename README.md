@@ -152,6 +152,27 @@ DIRECT_URL=
 PORT=3000
 ```
 
+### Mobile Production API URL
+
+For local browser testing:
+
+```env
+EXPO_PUBLIC_API_URL=http://localhost:3000
+```
+
+For testing on a real phone with local backend:
+```text
+EXPO_PUBLIC_API_URL=http://YOUR_PC_IP_ADDRESS:3000
+```
+
+For production or hosted backend testing, update:
+
+```text
+EXPO_PUBLIC_API_URL=https://your-backend-url.com
+```
+
+Do not commit real `.env ` files.
+
 ### Supabase Connection on Render
 
 When deploying the backend to Render with Supabase PostgreSQL, use the Supabase **Session Pooler** connection string for `DATABASE_URL`.
@@ -161,13 +182,9 @@ Avoid using the direct database URL like:
 ```text
 db.<project-ref>.supabase.co:5432
 ```
+because it may fail from Render depending on IPv4/IPv6 availability.
 
-### Mobile
-
-For production or hosted backend testing, update:
-
+Use the Session Pooler format instead:
 ```text
-EXPO_PUBLIC_API_URL=https://your-backend-url.com
+postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
 ```
-
-Do not commit real ```.env ``` files.
