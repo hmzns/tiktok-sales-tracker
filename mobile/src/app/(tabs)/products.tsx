@@ -47,6 +47,7 @@ export default function ProductsScreen() {
     }
   };
 
+  // Reload after add/edit screens close so the list reflects saved changes.
   useFocusEffect(
     useCallback(() => {
       loadProducts();
@@ -144,6 +145,7 @@ export default function ProductsScreen() {
         </View>
       ) : (
         products.map((product) => {
+          // Keep the badge threshold aligned with the low-stock API filter.
           const isLowStock = product.stock <= 5;
 
           return (

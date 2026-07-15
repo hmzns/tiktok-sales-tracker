@@ -69,6 +69,7 @@ export default function OrderDetailScreen() {
 
     const actionLabel = status === "CANCELLED" ? "cancel" : "refund";
 
+    // React Native alerts do not provide confirmation buttons on web.
     if (Platform.OS === "web") {
       const confirmed = window.confirm(
         `Are you sure you want to ${actionLabel} this order? Stock will be restored.`
@@ -98,6 +99,7 @@ export default function OrderDetailScreen() {
     );
   };
 
+  // Refresh when returning from another route so status changes stay current.
   useFocusEffect(
     useCallback(() => {
       loadOrder();

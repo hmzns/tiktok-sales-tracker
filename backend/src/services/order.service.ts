@@ -43,6 +43,8 @@ export const createOrder = async (data: CreateOrderInput) => {
     throw new AppError("One or more products were not found", 404);
   }
 
+  // Snapshot prices on each order item so later product price changes do not
+  // rewrite the order's historical revenue, cost, or profit.
   const orderItemsData = data.items.map((item) => {
     const product = products.find((p) => p.id === item.productId);
 
@@ -81,6 +83,8 @@ export const createOrder = async (data: CreateOrderInput) => {
   const total = subtotal - discount + shippingFee;
   const profit = total - totalCost;
 
+  // The order, stock deductions, and movement audit records must succeed or
+  // fail together to keep inventory consistent with sales.
   return prisma.$transaction(async (tx) => {
     const order = await tx.salesOrder.create({
       data: {
@@ -273,6 +277,8 @@ export const updateOrderStatus = async (
     return order;
   }
 
+  // Terminal states also prove stock was already restored, preventing a
+  // second status update from restoring the same items twice.
   if (order.status === "CANCELLED" || order.status === "REFUNDED") {
     throw new AppError("Cancelled or refunded orders cannot be updated", 400);
   }

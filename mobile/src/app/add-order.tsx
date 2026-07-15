@@ -89,6 +89,8 @@ export default function AddOrderScreen() {
       (item) => item.productId === selectedProduct.id
     );
 
+    // A product can be added repeatedly, so validate the combined quantity
+    // rather than only the latest entry.
     const existingQuantity = existingItem?.quantity ?? 0;
     const newTotalQuantity = existingQuantity + parsedQuantity;
 
@@ -149,6 +151,8 @@ export default function AddOrderScreen() {
     try {
       setSaving(true);
 
+      // The API revalidates stock and calculates authoritative totals; these
+      // client-side values provide immediate feedback before submission.
       await createOrder({
         orderNumber: orderNumber.trim() || undefined,
         customerName: customerName.trim() || undefined,

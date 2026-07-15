@@ -11,6 +11,7 @@ const getMonthRange = (year?: number, month?: number) => {
   const selectedYear = year ?? now.getFullYear();
   const selectedMonth = month ?? now.getMonth() + 1;
 
+  // The exclusive end boundary avoids overlap between consecutive reports.
   const startDate = new Date(selectedYear, selectedMonth - 1, 1);
   const endDate = new Date(selectedYear, selectedMonth, 1);
 
@@ -30,6 +31,7 @@ export const getMonthlySalesReport = async (
     filter.month
   );
 
+  // Financial reports recognize only orders that remain valid sales.
   const orders = await prisma.salesOrder.findMany({
     where: {
       createdAt: {
@@ -116,6 +118,7 @@ export const getMonthlySalesReport = async (
     })),
   }));
 
+  // Collapse line items across orders into one performance row per product.
   const productMap = new Map<
     string,
     {

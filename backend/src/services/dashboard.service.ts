@@ -11,6 +11,7 @@ const getMonthRange = (year?: number, month?: number) => {
   const selectedYear = year ?? now.getFullYear();
   const selectedMonth = month ?? now.getMonth() + 1;
 
+  // Use a half-open range so every timestamp belongs to exactly one month.
   const startDate = new Date(selectedYear, selectedMonth - 1, 1);
   const endDate = new Date(selectedYear, selectedMonth, 1);
 
@@ -28,6 +29,7 @@ export const getDashboardSummary = async (filter: DashboardFilter) => {
     filter.month
   );
 
+  // Cancelled and refunded orders no longer contribute to sales metrics.
   const orders = await prisma.salesOrder.findMany({
     where: {
       createdAt: {
@@ -94,6 +96,7 @@ export const getDashboardSummary = async (filter: DashboardFilter) => {
 
   const daysInMonth = new Date(year, month, 0).getDate();
 
+  // Pre-fill every calendar day so chart consumers do not need to infer gaps.
   const dailySales = Array.from({ length: daysInMonth }, (_, index) => {
     const day = index + 1;
 
@@ -194,6 +197,7 @@ const stockSummary = {
   totalStockOut: 0,
 };
 
+// Movement quantities are signed; outward-facing totals are kept positive.
 for (const movement of stockMovements) {
   if (movement.quantity > 0) {
     stockSummary.totalStockIn += movement.quantity;

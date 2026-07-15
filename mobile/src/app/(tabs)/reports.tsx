@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { getMonthlyReport, MonthlyReport } from "../../api/reports";
-import { router, useFocusEffect } from "expo-router";
+import { useFocusEffect } from "expo-router";
 
 const formatRM = (value: number) => {
   return `RM ${value.toFixed(2)}`;
