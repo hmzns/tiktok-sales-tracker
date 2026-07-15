@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -42,7 +43,7 @@ export default function OrderDetailScreen() {
     }
   };
 
-  const handleStatusUpdate = async (status: OrderStatus) => {
+  const updateStatus = async (status: OrderStatus) => {
     if (!orderId) return;
 
     try {
@@ -58,6 +59,43 @@ export default function OrderDetailScreen() {
     } finally {
       setUpdating(false);
     }
+  };
+
+  const handleStatusUpdate = async (status: OrderStatus) => {
+    if (status !== "CANCELLED" && status !== "REFUNDED") {
+      await updateStatus(status);
+      return;
+    }
+
+    const actionLabel = status === "CANCELLED" ? "cancel" : "refund";
+
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm(
+        `Are you sure you want to ${actionLabel} this order? Stock will be restored.`
+      );
+
+      if (confirmed) {
+        await updateStatus(status);
+      }
+
+      return;
+    }
+
+    Alert.alert(
+      status === "CANCELLED" ? "Cancel Order" : "Refund Order",
+      `Are you sure you want to ${actionLabel} this order? Stock will be restored.`,
+      [
+        {
+          text: "No",
+          style: "cancel",
+        },
+        {
+          text: "Yes",
+          style: "destructive",
+          onPress: () => updateStatus(status),
+        },
+      ]
+    );
   };
 
   useFocusEffect(

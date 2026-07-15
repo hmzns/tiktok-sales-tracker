@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,7 +16,7 @@ import {
   OrderStatus,
   updateOrderStatus,
 } from "../../api/orders";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 
 const formatRM = (value: number) => {
   return `RM ${value.toFixed(2)}`;
@@ -80,9 +80,11 @@ export default function OrdersScreen() {
     }
   };
 
-  useEffect(() => {
-    loadOrders();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadOrders();
+    }, [search, statusFilter])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
