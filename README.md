@@ -119,3 +119,15 @@ EXPO_PUBLIC_API_URL=http://localhost:3000
 ```text
 EXPO_PUBLIC_API_URL=http://<YOUR IP ADDRESS>:3000
 ```
+
+## Deployment Notes
+
+### Backend
+
+The backend can be deployed as a Node.js web service.
+
+Production build command:
+
+```bash
+npm install && npm run build
+```
