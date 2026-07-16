@@ -188,3 +188,13 @@ Use the Session Pooler format instead:
 ```text
 postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
 ```
+
+### Web Frontend
+
+The Expo web frontend is deployed on Cloudflare Pages.
+
+Frontend URL:
+
+```text
+https://your-cloudflare-pages-url.pages.dev
+```
