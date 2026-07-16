@@ -198,3 +198,12 @@ Frontend URL:
 ```text
 https://your-cloudflare-pages-url.pages.dev
 ```
+
+### Access Protection
+
+The Cloudflare Pages frontend is protected using Cloudflare Access email OTP.
+
+Only approved email addresses can access the web app.
+
+To update access:
+Cloudflare Zero Trust → Access → Applications → TikTok Sales Tracker → Policies
