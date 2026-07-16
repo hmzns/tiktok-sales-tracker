@@ -34,6 +34,7 @@
   },
   "scripts": {
     "start": "expo start",
+    "web:export": "expo export --platform web",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
