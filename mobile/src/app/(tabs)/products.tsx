@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  FlatList,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -14,6 +17,7 @@ import {
   getProducts,
   Product,
 } from "../../api/products";
+import { apiClient } from "../../api/client";
 import { router, useFocusEffect } from "expo-router";
 
 const formatRM = (value: number) => {
@@ -83,6 +87,84 @@ export default function ProductsScreen() {
     );
   }
 
+  const escapeCsvValue = (value: unknown) => {
+    const text = String(value ?? "");
+    return `"${text.replace(/"/g, '""')}"`;
+  };
+
+  const buildCsv = (rows: unknown[][]) => {
+    return rows.map((row) => row.map(escapeCsvValue).join(",")).join("\n");
+  };
+
+  const handleExportProductsCsv = async () => {
+    if (Platform.OS !== "web") {
+      Alert.alert(
+        "Export not available",
+        "Products CSV export is currently available on the web version only."
+      );
+      return;
+    }
+
+    try {
+      const response = await apiClient.get("/products", {
+        params: {
+          page: 1,
+          limit: 1000,
+        },
+      });
+
+      const products = response.data.data ?? [];
+
+      if (products.length === 0) {
+        Alert.alert("No products", "There are no products to export.");
+        return;
+      }
+
+      const rows: unknown[][] = [
+        ["TikTok Sales Tracker Products Export"],
+        ["Export Date", new Date().toLocaleString()],
+        [],
+        [
+          "Name",
+          "SKU",
+          "Category",
+          "Cost Price",
+          "Sell Price",
+          "Stock",
+          "Status",
+        ],
+        ...products.map((product: any) => [
+          product.name,
+          product.sku,
+          product.category?.name ?? "-",
+          product.costPrice,
+          product.sellPrice,
+          product.stock,
+          product.isActive ? "Active" : "Inactive",
+        ]),
+      ];
+
+      const csv = buildCsv(rows);
+      const blob = new Blob([csv], {
+        type: "text/csv;charset=utf-8;",
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = `products-${new Date().toISOString().slice(0, 10)}.csv`;
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      Alert.alert("Export failed", "Unable to export products.");
+    }
+  };
+
   return (
     <ScrollView
       style={styles.screen}
@@ -93,6 +175,10 @@ export default function ProductsScreen() {
     >
       <Text style={styles.title}>Products</Text>
       <Text style={styles.subtitle}>Total products: {total}</Text>
+
+      <Pressable style={styles.exportButton} onPress={handleExportProductsCsv}>
+        <Text style={styles.exportButtonText}>Export Products CSV</Text>
+      </Pressable>
 
       <Pressable
         style={styles.addButton}
@@ -437,5 +523,16 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: "#111",
     fontWeight: "800",
+  },
+  exportButton: {
+    backgroundColor: "#111",
+    borderRadius: 10,
+    padding: 12,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  exportButtonText: {
+    color: "#fff",
+    fontWeight: "900",
   },
 });
