@@ -1,5 +1,6 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
+import { apiClient } from "../../api/client";
 import {
   ActivityIndicator,
   Alert,
@@ -144,6 +145,74 @@ export default function ExpensesScreen() {
     );
   }
 
+  const escapeCsvValue = (value: unknown) => {
+    const text = String(value ?? "");
+    return `"${text.replace(/"/g, '""')}"`;
+  };
+
+  const buildCsv = (rows: unknown[][]) => {
+    return rows.map((row) => row.map(escapeCsvValue).join(",")).join("\n");
+  };
+
+  const handleExportExpensesCsv = async () => {
+    if (Platform.OS !== "web") {
+      Alert.alert(
+        "Export not available",
+        "Expenses CSV export is currently available on the web version only."
+      );
+      return;
+    }
+
+    try {
+      const response = await apiClient.get("/expenses", {
+        params: {
+          page: 1,
+          limit: 1000,
+        },
+      });
+
+      const expenses = response.data.data ?? [];
+
+      if (expenses.length === 0) {
+        Alert.alert("No expenses", "There are no expenses to export.");
+        return;
+      }
+
+      const rows: unknown[][] = [
+        ["TikTok Sales Tracker Expenses Export"],
+        ["Export Date", new Date().toLocaleString()],
+        [],
+        ["Title", "Category", "Amount", "Date", "Note"],
+        ...expenses.map((expense: any) => [
+          expense.title ?? expense.name ?? "-",
+          expense.category,
+          expense.amount,
+          expense.date,
+          expense.note ?? expense.description ?? "-",
+        ]),
+      ];
+
+      const csv = buildCsv(rows);
+      const blob = new Blob([csv], {
+        type: "text/csv;charset=utf-8;",
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = `expenses-${new Date().toISOString().slice(0, 10)}.csv`;
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      Alert.alert("Export failed", "Unable to export expenses.");
+    }
+  };
+
   return (
     <ScrollView
       style={styles.screen}
@@ -154,6 +223,10 @@ export default function ExpensesScreen() {
     >
       <Text style={styles.title}>Expenses</Text>
       <Text style={styles.subtitle}>Total expenses: {total}</Text>
+
+      <Pressable style={styles.exportButton} onPress={handleExportExpensesCsv}>
+        <Text style={styles.exportButtonText}>Export Expenses CSV</Text>
+      </Pressable>
 
       <View style={styles.summaryCard}>
         <Text style={styles.summaryLabel}>Shown Total</Text>
@@ -469,5 +542,16 @@ const styles = StyleSheet.create({
   deleteButtonText: {
     color: "#cc3333",
     fontWeight: "800",
+  },
+  exportButton: {
+    backgroundColor: "#111",
+    borderRadius: 10,
+    padding: 12,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  exportButtonText: {
+    color: "#fff",
+    fontWeight: "900",
   },
 });
