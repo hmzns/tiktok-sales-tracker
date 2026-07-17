@@ -1,6 +1,8 @@
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -107,6 +109,106 @@ export default function ReportsScreen() {
     );
   }
 
+  const escapeCsvValue = (value: unknown) => {
+    const text = String(value ?? "");
+    return `"${text.replace(/"/g, '""')}"`;
+  };
+
+  const buildCsv = (rows: unknown[][]) => {
+    return rows.map((row) => row.map(escapeCsvValue).join(",")).join("\n");
+  };
+
+  const handleExportCsv = () => {
+    if (!report) {
+      Alert.alert("Error", "No report data to export.");
+      return;
+    }
+
+    if (Platform.OS !== "web") {
+      Alert.alert(
+        "Export not available",
+        "CSV export is currently available on the web version only."
+      );
+      return;
+    }
+
+    const rows: unknown[][] = [
+      ["TikTok Sales Tracker Monthly Report"],
+      ["Year", report.period.year],
+      ["Month", report.period.month],
+      ["Start Date", report.period.startDate],
+      ["End Date", report.period.endDate],
+      [],
+      ["Summary"],
+      ["Total Revenue", report.summary.totalRevenue],
+      ["Total Cost", report.summary.totalCost],
+      ["Sales Profit", report.summary.salesProfit],
+      ["Total Expenses", report.summary.totalExpenses],
+      ["Net Profit", report.summary.netProfit],
+      ["Total Orders", report.summary.totalOrders],
+      ["Total Items Sold", report.summary.totalItemsSold],
+      ["Average Order Value", report.summary.averageOrderValue],
+      [],
+      ["Orders"],
+      [
+        "Order Number",
+        "Customer",
+        "Platform",
+        "Status",
+        "Date",
+        "Total",
+        "Profit",
+      ],
+      ...report.orderRows.map((order) => [
+        order.orderNumber ?? "-",
+        order.customerName ?? "-",
+        order.platform,
+        order.status,
+        order.date,
+        order.total,
+        order.profit,
+      ]),
+      [],
+      ["Product Summary"],
+      ["Product", "SKU", "Category", "Quantity Sold", "Revenue", "Cost", "Profit"],
+      ...report.productSummary.map((product) => [
+        product.productName,
+        product.sku,
+        product.category ?? "-",
+        product.quantitySold,
+        product.revenue,
+        product.cost,
+        product.profit,
+      ]),
+      [],
+      ["Expenses by Category"],
+      ["Category", "Amount"],
+      ...report.expensesByCategory.map((expense) => [
+        expense.category,
+        expense.amount,
+      ]),
+    ];
+
+    const csv = buildCsv(rows);
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = `monthly-report-${report.period.year}-${String(
+      report.period.month
+    ).padStart(2, "0")}.csv`;
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <ScrollView
       style={styles.screen}
@@ -119,6 +221,10 @@ export default function ReportsScreen() {
       <Text style={styles.subtitle}>
         {monthNames[month - 1]} {year}
       </Text>
+
+      <Pressable style={styles.exportButton} onPress={handleExportCsv}>
+        <Text style={styles.exportButtonText}>Export CSV</Text>
+      </Pressable>
 
       <View style={styles.monthControls}>
         <Pressable style={styles.monthButton} onPress={goPreviousMonth}>
@@ -416,5 +522,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     color: "red",
+  },
+  exportButton: {
+    backgroundColor: "#111",
+    borderRadius: 10,
+    padding: 12,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  exportButtonText: {
+    color: "#fff",
+    fontWeight: "900",
   },
 });
