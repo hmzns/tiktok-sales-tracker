@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { apiClient } from "../../api/client";
 import { getMonthlyReport, MonthlyReport } from "../../api/reports";
 import { useFocusEffect } from "expo-router";
 
@@ -58,11 +59,11 @@ export default function ReportsScreen() {
   };
 
   useFocusEffect(
-  useCallback(() => {
-    setLoading(true);
-    loadReport();
-  }, [year, month])
-);
+    useCallback(() => {
+      setLoading(true);
+      loadReport();
+    }, [year, month])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -270,6 +271,83 @@ export default function ReportsScreen() {
     URL.revokeObjectURL(url);
   };
 
+  const fetchAllPages = async (endpoint: string) => {
+    const limit = 1000;
+    let page = 1;
+    let allItems: any[] = [];
+
+    while (true) {
+      const response = await apiClient.get(endpoint, {
+        params: {
+          page,
+          limit,
+        },
+      });
+
+      const items = response.data.data ?? [];
+      allItems = [...allItems, ...items];
+
+      if (items.length < limit) {
+        break;
+      }
+
+      page += 1;
+    }
+
+    return allItems;
+  };
+
+  const handleExportFullBackup = async () => {
+    if (Platform.OS !== "web") {
+      Alert.alert(
+        "Export not available",
+        "Full backup export is currently available on the web version only."
+      );
+      return;
+    }
+
+    try {
+      const [products, orders, expenses] = await Promise.all([
+        fetchAllPages("/products"),
+        fetchAllPages("/orders"),
+        fetchAllPages("/expenses"),
+      ]);
+
+      const backup = {
+        backupName: "TikTok Sales Tracker Full Backup",
+        backupVersion: 1,
+        exportedAt: new Date().toISOString(),
+        data: {
+          products,
+          orders,
+          expenses,
+        },
+      };
+
+      const json = JSON.stringify(backup, null, 2);
+
+      const blob = new Blob([json], {
+        type: "application/json;charset=utf-8;",
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = `tiktok-sales-tracker-backup-${new Date()
+        .toISOString()
+        .slice(0, 10)}.json`;
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      Alert.alert("Backup failed", "Unable to export full backup.");
+    }
+  };
+
   return (
     <ScrollView
       style={styles.screen}
@@ -292,6 +370,10 @@ export default function ReportsScreen() {
         onPress={handleExportOrdersCsv}
       >
         <Text style={styles.secondaryExportButtonText}>Export Orders CSV</Text>
+      </Pressable>
+
+      <Pressable style={styles.backupButton} onPress={handleExportFullBackup}>
+        <Text style={styles.backupButtonText}>Export Full Backup</Text>
       </Pressable>
 
       <View style={styles.monthControls}>
@@ -613,6 +695,17 @@ const styles = StyleSheet.create({
   },
   secondaryExportButtonText: {
     color: "#111",
+    fontWeight: "900",
+  },
+  backupButton: {
+    backgroundColor: "#2563eb",
+    borderRadius: 10,
+    padding: 12,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  backupButtonText: {
+    color: "#fff",
     fontWeight: "900",
   },
 });
