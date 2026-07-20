@@ -9,6 +9,7 @@ import productCategoriesRouter from "./routes/productCategories";
 import stockMovementsRouter from "./routes/stockMovements";
 import reportsRouter from "./routes/reports";
 import apiDocsRouter from "./routes/apiDocs";
+import { apiKeyAuth } from "./middleware/apiKeyAuth";
 import { errorHandler } from "./middleware/errorHandler";
 import { notFound } from "./middleware/notFound";
 
@@ -35,6 +36,8 @@ app.use(
 );
 
 app.use(express.json());
+
+app.use(apiKeyAuth);
 
 app.get("/health", (req, res) => {
   res.json({
