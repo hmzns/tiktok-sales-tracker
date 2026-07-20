@@ -9,11 +9,14 @@ import productCategoriesRouter from "./routes/productCategories";
 import stockMovementsRouter from "./routes/stockMovements";
 import reportsRouter from "./routes/reports";
 import apiDocsRouter from "./routes/apiDocs";
+import { apiRateLimiter } from "./middleware/rateLimiter";
 import { apiKeyAuth } from "./middleware/apiKeyAuth";
 import { errorHandler } from "./middleware/errorHandler";
 import { notFound } from "./middleware/notFound";
 
 const app = express();
+
+app.set("trust proxy", 1);
 
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",").map((origin) =>
   origin.trim()
@@ -36,7 +39,7 @@ app.use(
 );
 
 app.use(express.json());
-
+app.use(apiRateLimiter);
 app.use(apiKeyAuth);
 
 app.get("/health", (req, res) => {
