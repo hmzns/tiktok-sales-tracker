@@ -11,6 +11,7 @@ import reportsRouter from "./routes/reports";
 import apiDocsRouter from "./routes/apiDocs";
 import { apiRateLimiter } from "./middleware/rateLimiter";
 import { apiKeyAuth } from "./middleware/apiKeyAuth";
+import { requestLogger } from "./middleware/requestLogger";
 import { errorHandler } from "./middleware/errorHandler";
 import { notFound } from "./middleware/notFound";
 
@@ -39,6 +40,7 @@ app.use(
 );
 
 app.use(express.json());
+app.use(requestLogger);
 app.use(apiRateLimiter);
 app.use(apiKeyAuth);
 

@@ -7,6 +7,10 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ) => {
+  console.error(`[${new Date().toISOString()}] Error:`, {
+    message: error.message,
+    stack: process.env.NODE_ENV === "production" ? undefined : error.stack,
+  });
 
   if (error instanceof AppError) {
     return res.status(error.statusCode).json({
