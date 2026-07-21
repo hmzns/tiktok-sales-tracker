@@ -13,6 +13,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { EmptyState } from "../../components/EmptyState";
 import { Expense, ExpenseCategory, deleteExpense, getExpenses } from "../../api/expenses";
 
 const formatRM = (value: number) => {
@@ -284,10 +285,11 @@ export default function ExpensesScreen() {
         <Text style={styles.searchButtonText}>Apply Filter</Text>
       </Pressable>
 
-      {expenses.length === 0 ? (
-        <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>No expenses found.</Text>
-        </View>
+      {!loading && expenses.length === 0 ? (
+        <EmptyState
+          title="No expenses yet"
+          message="Add expenses such as packaging, delivery, ads, or supplies."
+        />
       ) : (
         expenses.map((expense) => (
           <View key={expense.id} style={styles.card}>

@@ -17,6 +17,7 @@ import {
   getProducts,
   Product,
 } from "../../api/products";
+import { EmptyState } from "../../components/EmptyState";
 import { apiClient } from "../../api/client";
 import { router, useFocusEffect } from "expo-router";
 
@@ -225,10 +226,11 @@ export default function ProductsScreen() {
         </Text>
       </Pressable>
 
-      {products.length === 0 ? (
-        <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>No products found.</Text>
-        </View>
+      {!loading && products.length === 0 ? (
+        <EmptyState
+          title="No products yet"
+          message="Add your first product to start tracking stock and sales."
+        />
       ) : (
         products.map((product) => {
           // Keep the badge threshold aligned with the low-stock API filter.

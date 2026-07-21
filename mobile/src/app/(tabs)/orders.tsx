@@ -16,6 +16,7 @@ import {
   OrderStatus,
   updateOrderStatus,
 } from "../../api/orders";
+import { EmptyState } from "../../components/EmptyState";
 import { router, useFocusEffect } from "expo-router";
 
 const formatRM = (value: number) => {
@@ -185,10 +186,11 @@ export default function OrdersScreen() {
         <Text style={styles.searchButtonText}>Apply Filter</Text>
       </Pressable>
 
-      {orders.length === 0 ? (
-        <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>No orders found.</Text>
-        </View>
+      {!loading && orders.length === 0 ? (
+        <EmptyState
+          title="No orders yet"
+          message="Create your first order to start tracking revenue and stock movement."
+        />
       ) : (
         orders.map((order) => (
           <View key={order.id} style={styles.card}>
