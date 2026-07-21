@@ -18,6 +18,7 @@ import {
   Product,
 } from "../../api/products";
 import { EmptyState } from "../../components/EmptyState";
+import { LoadingState } from "../../components/LoadingState";
 import { apiClient } from "../../api/client";
 import { router, useFocusEffect } from "expo-router";
 
@@ -70,10 +71,10 @@ export default function ProductsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-        <Text style={styles.loadingText}>Loading products...</Text>
-      </View>
+      <LoadingState
+        title="Almost there..."
+        message="Sabar is separuh daripada iman."
+      />
     );
   }
 
@@ -226,7 +227,7 @@ export default function ProductsScreen() {
         </Text>
       </Pressable>
 
-      {!loading && products.length === 0 ? (
+      {products.length === 0 ? (
         <EmptyState
           title="No products yet"
           message="Add your first product to start tracking stock and sales."

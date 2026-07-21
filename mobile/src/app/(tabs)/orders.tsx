@@ -17,6 +17,7 @@ import {
   updateOrderStatus,
 } from "../../api/orders";
 import { EmptyState } from "../../components/EmptyState";
+import { LoadingState } from "../../components/LoadingState";
 import { router, useFocusEffect } from "expo-router";
 
 const formatRM = (value: number) => {
@@ -106,10 +107,10 @@ export default function OrdersScreen() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-        <Text style={styles.loadingText}>Loading orders...</Text>
-      </View>
+      <LoadingState
+        title="Let's see your hustle..."
+        message="Mind you, everything is from Him."
+      />
     );
   }
 
@@ -186,7 +187,7 @@ export default function OrdersScreen() {
         <Text style={styles.searchButtonText}>Apply Filter</Text>
       </Pressable>
 
-      {!loading && orders.length === 0 ? (
+      {orders.length === 0 ? (
         <EmptyState
           title="No orders yet"
           message="Create your first order to start tracking revenue and stock movement."

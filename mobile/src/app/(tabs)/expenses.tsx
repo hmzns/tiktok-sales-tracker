@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { EmptyState } from "../../components/EmptyState";
+import { LoadingState } from "../../components/LoadingState";
 import { Expense, ExpenseCategory, deleteExpense, getExpenses } from "../../api/expenses";
 
 const formatRM = (value: number) => {
@@ -128,10 +129,10 @@ export default function ExpensesScreen() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-        <Text style={styles.loadingText}>Loading expenses...</Text>
-      </View>
+      <LoadingState
+        title="Getting all the money you spent..."
+        message="Stop spending on ZUS Coffee if you want to earn more profit."
+      />
     );
   }
 
@@ -285,7 +286,7 @@ export default function ExpensesScreen() {
         <Text style={styles.searchButtonText}>Apply Filter</Text>
       </Pressable>
 
-      {!loading && expenses.length === 0 ? (
+      {expenses.length === 0 ? (
         <EmptyState
           title="No expenses yet"
           message="Add expenses such as packaging, delivery, ads, or supplies."

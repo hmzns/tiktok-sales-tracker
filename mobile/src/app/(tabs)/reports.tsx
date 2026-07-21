@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { apiClient } from "../../api/client";
+import { LoadingState } from "../../components/LoadingState";
 import { getMonthlyReport, MonthlyReport } from "../../api/reports";
 import { useFocusEffect } from "expo-router";
 
@@ -92,10 +93,10 @@ export default function ReportsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-        <Text style={styles.loadingText}>Loading report...</Text>
-      </View>
+      <LoadingState
+        title="Generating all the numbers..."
+        message="Sit back and relax, make a cup of coffee or layan Aleena."
+      />
     );
   }
 
