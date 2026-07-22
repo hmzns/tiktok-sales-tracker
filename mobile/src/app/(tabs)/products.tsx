@@ -19,6 +19,7 @@ import {
 } from "../../api/products";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
+import { ErrorState } from "../../components/ErrorState";
 import { apiClient } from "../../api/client";
 import { router, useFocusEffect } from "expo-router";
 
@@ -37,6 +38,8 @@ export default function ProductsScreen() {
 
   const loadProducts = async () => {
     try {
+      setLoading(true);
+      setError(null);
       if (showLowStockOnly) {
         const lowStockProducts = await getLowStockProducts(5);
         setProducts(lowStockProducts);
@@ -45,7 +48,7 @@ export default function ProductsScreen() {
 
       const result = await getProducts(1, 20, search);
       setProducts(result.products);
-    } catch (err) {
+    } catch (error) {
       setError("Failed to load products");
     } finally {
       setLoading(false);
@@ -80,11 +83,12 @@ export default function ProductsScreen() {
 
   if (error) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>{error}</Text>
-        <Text style={styles.smallText}>
-          Make sure your backend is running and API URL is correct.
-        </Text>
+      <View style={styles.screen}>
+        <ErrorState
+          title="Failed to load products"
+          message="Please check your connection or backend API, then try again."
+          onRetry={loadProducts}
+        />
       </View>
     );
   }

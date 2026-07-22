@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { apiClient } from "../../api/client";
 import { LoadingState } from "../../components/LoadingState";
+import { ErrorState } from "../../components/ErrorState";
 import { getMonthlyReport, MonthlyReport } from "../../api/reports";
 import { useFocusEffect } from "expo-router";
 
@@ -102,11 +103,12 @@ export default function ReportsScreen() {
 
   if (error || !report) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>{error}</Text>
-        <Text style={styles.smallText}>
-          Make sure your backend is running and API URL is correct.
-        </Text>
+      <View style={styles.screen}>
+        <ErrorState
+          title="Failed to load report"
+          message="Please check your backend connection and try again."
+          onRetry={loadReport}
+        />
       </View>
     );
   }

@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
+import { ErrorState } from "../../components/ErrorState";
 import { Expense, ExpenseCategory, deleteExpense, getExpenses } from "../../api/expenses";
 
 const formatRM = (value: number) => {
@@ -138,11 +139,12 @@ export default function ExpensesScreen() {
 
   if (error) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>{error}</Text>
-        <Text style={styles.smallText}>
-          Make sure your backend is running and API URL is correct.
-        </Text>
+      <View style={styles.screen}>
+        <ErrorState
+          title="Failed to load expenses"
+          message="Please check your connection or backend API, then try again."
+          onRetry={loadExpenses}
+        />
       </View>
     );
   }

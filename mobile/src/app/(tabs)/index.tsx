@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { getDashboardSummary } from "../../api/dashboard";
+import { ErrorState } from "../../components/ErrorState";
 import { router, useFocusEffect } from "expo-router";
 
 type DashboardData = {
@@ -55,6 +56,7 @@ export default function HomeScreen() {
   const loadDashboard = async () => {
     try {
       setError(null);
+
       const data = await getDashboardSummary(currentYear, currentMonth);
       setDashboard(data);
     } catch (err) {
@@ -87,11 +89,12 @@ export default function HomeScreen() {
 
   if (error || !dashboard) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>{error}</Text>
-        <Text style={styles.smallText}>
-          Make sure your backend is running and API URL is correct.
-        </Text>
+      <View style={styles.screen}>
+        <ErrorState
+          title="Failed to load dashboard"
+          message="Please check your backend connection and try again."
+          onRetry={loadDashboard}
+        />
       </View>
     );
   }
