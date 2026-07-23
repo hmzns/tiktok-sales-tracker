@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { FieldError } from "../components/FieldError";
+import { showSuccessMessage } from "../utils/showSuccessMessage";
 import {
   createExpense,
   ExpenseCategory,
@@ -88,6 +89,8 @@ export default function AddExpenseScreen() {
         category,
         description: description.trim() || undefined,
       });
+
+      showSuccessMessage("Expense added successfully.");
 
       router.replace("/expenses" as any);
     } catch (err: any) {

@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { createProduct } from "../api/products";
 import { FieldError } from "../components/FieldError";
+import { showSuccessMessage } from "../utils/showSuccessMessage";
 import {
   getProductCategories,
   ProductCategory,
@@ -135,6 +136,8 @@ export default function AddProductScreen() {
         stock: parsedStock,
         categoryId,
       });
+
+      showSuccessMessage("Product created successfully.");
 
       router.replace("/products" as any);
     } catch (err: any) {

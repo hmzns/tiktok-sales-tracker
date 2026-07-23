@@ -13,6 +13,7 @@ import { router } from "expo-router";
 import { createOrder } from "../api/orders";
 import { getProducts, Product } from "../api/products";
 import { FieldError } from "../components/FieldError";
+import { showSuccessMessage } from "../utils/showSuccessMessage";
 
 type SelectedOrderItem = {
   productId: string;
@@ -234,6 +235,8 @@ export default function AddOrderScreen() {
           sellPrice: item.sellPrice,
         })),
       });
+
+      showSuccessMessage("Order created successfully.");
 
       router.replace("/orders" as any);
     } catch (err: any) {
