@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { createProduct } from "../api/products";
+import { FieldError } from "../components/FieldError";
 import {
   getProductCategories,
   ProductCategory,
@@ -43,10 +44,56 @@ export default function AddProductScreen() {
     loadCategories();
   }, []);
 
+  const [fieldErrors, setFieldErrors] = useState({
+    name: "",
+    sku: "",
+    costPrice: "",
+    sellPrice: "",
+    stock: "",
+  });
+
+  const validateProductForm = () => {
+    const errors = {
+      name: "",
+      sku: "",
+      costPrice: "",
+      sellPrice: "",
+      stock: "",
+    };
+
+    if (!name.trim()) {
+      errors.name = "Product name is required.";
+    }
+
+    if (!sku.trim()) {
+      errors.sku = "SKU is required.";
+    }
+
+    if (!costPrice || Number(costPrice) < 0) {
+      errors.costPrice = "Cost price must be 0 or more.";
+    }
+
+    if (!sellPrice || Number(sellPrice) < 0) {
+      errors.sellPrice = "Sell price must be 0 or more.";
+    }
+
+    if (stock && Number(stock) < 0) {
+      errors.stock = "Stock cannot be negative.";
+    }
+
+    setFieldErrors(errors);
+
+    return !Object.values(errors).some(Boolean);
+  };
+
   const handleSubmit = async () => {
     const parsedCostPrice = Number(costPrice);
     const parsedSellPrice = Number(sellPrice);
     const parsedStock = Number(stock);
+
+    if (!validateProductForm()) {
+      return;
+    }
 
     if (!name.trim()) {
       Alert.alert("Validation Error", "Product name is required");
@@ -111,44 +158,64 @@ export default function AddProductScreen() {
           style={styles.input}
           placeholder="Example: Tudung Bawal Premium"
           value={name}
-          onChangeText={setName}
+          onChangeText={(value) => {
+            setName(value);
+            setFieldErrors((current) => ({ ...current, name: "" }));
+          }}
         />
+        <FieldError message={fieldErrors.name} />
 
         <Text style={styles.label}>SKU</Text>
         <TextInput
           style={styles.input}
           placeholder="Example: TDG001"
           value={sku}
-          onChangeText={setSku}
+          onChangeText={(value) => {
+            setSku(value);
+            setFieldErrors((current) => ({ ...current, sku: "" }));
+          }}
           autoCapitalize="characters"
         />
+        <FieldError message={fieldErrors.sku} />
 
         <Text style={styles.label}>Cost Price</Text>
         <TextInput
           style={styles.input}
           placeholder="Example: 12"
           value={costPrice}
-          onChangeText={setCostPrice}
+          onChangeText={(value) => {
+            setCostPrice(value);
+            setFieldErrors((current) => ({ ...current, costPrice: "" }));
+          }}
           keyboardType="numeric"
         />
+        <FieldError message={fieldErrors.costPrice} />
 
         <Text style={styles.label}>Sell Price</Text>
         <TextInput
           style={styles.input}
           placeholder="Example: 25"
           value={sellPrice}
-          onChangeText={setSellPrice}
+          onChangeText={(value) => {
+            setSellPrice(value);
+            setFieldErrors((current) => ({ ...current, sellPrice: "" }));
+          }}
           keyboardType="numeric"
         />
+        <FieldError message={fieldErrors.sellPrice} />
 
         <Text style={styles.label}>Stock</Text>
         <TextInput
           style={styles.input}
           placeholder="Example: 20"
           value={stock}
-          onChangeText={setStock}
+          onChangeText={(value) => {
+            setStock(value);
+            setFieldErrors((current) => ({ ...current, stock: "" }));
+          }}
           keyboardType="numeric"
         />
+        <FieldError message={fieldErrors.stock} />
 
         <Text style={styles.label}>Category</Text>
 

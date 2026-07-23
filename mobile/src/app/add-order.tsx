@@ -10,9 +10,9 @@ import {
   View,
 } from "react-native";
 import { router } from "expo-router";
-
 import { createOrder } from "../api/orders";
 import { getProducts, Product } from "../api/products";
+import { FieldError } from "../components/FieldError";
 
 type SelectedOrderItem = {
   productId: string;
@@ -37,6 +37,14 @@ export default function AddOrderScreen() {
 
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const [fieldErrors, setFieldErrors] = useState({
+    orderNumber: "",
+    customerName: "",
+    product: "",
+    quantity: "",
+    selectedItems: "",
+  });
 
   const loadProducts = async () => {
     try {
@@ -68,7 +76,34 @@ export default function AddOrderScreen() {
   const parsedShippingFee = Number(shippingFee) || 0;
   const total = subtotal - parsedDiscount + parsedShippingFee;
 
+  const validateAddItemForm = () => {
+    const errors = {
+      product: "",
+      quantity: "",
+    };
+
+    if (!selectedProductId) {
+      errors.product = "Please select a product.";
+    }
+
+    if (!quantity || Number(quantity) < 1) {
+      errors.quantity = "Quantity must be 1 or more.";
+    }
+
+    setFieldErrors((current) => ({
+      ...current,
+      product: errors.product,
+      quantity: errors.quantity,
+    }));
+
+    return !Object.values(errors).some(Boolean);
+  };
+
   const handleAddItem = () => {
+    if (!validateAddItemForm()) {
+      return;
+    }
+
     if (!selectedProduct) {
       Alert.alert("Error", "Please select a product.");
       return;
@@ -137,7 +172,40 @@ export default function AddOrderScreen() {
     );
   };
 
+  const validateOrderForm = () => {
+    const errors = {
+      orderNumber: "",
+      customerName: "",
+      selectedItems: "",
+    };
+
+    if (!orderNumber.trim()) {
+      errors.orderNumber = "Order number is required.";
+    }
+
+    if (!customerName.trim()) {
+      errors.customerName = "Customer name is required.";
+    }
+
+    if (items.length === 0) {
+      errors.selectedItems = "Please add at least one item to the order.";
+    }
+
+    setFieldErrors((current) => ({
+      ...current,
+      orderNumber: errors.orderNumber,
+      customerName: errors.customerName,
+      selectedItems: errors.selectedItems,
+    }));
+
+    return !Object.values(errors).some(Boolean);
+  };
+
   const handleCreateOrder = async () => {
+    if (!validateOrderForm()) {
+      return;
+    }
+
     if (items.length === 0) {
       Alert.alert("Error", "Please add at least one product to the order.");
       return;
@@ -194,19 +262,28 @@ export default function AddOrderScreen() {
         style={styles.input}
         placeholder="Optional order number"
         value={orderNumber}
-        onChangeText={setOrderNumber}
+        onChangeText={(value) => {
+          setOrderNumber(value);
+          setFieldErrors((current) => ({ ...current, orderNumber: "" }));
+        }}
       />
+      <FieldError message={fieldErrors.orderNumber} />
 
       <Text style={styles.label}>Customer Name</Text>
       <TextInput
         style={styles.input}
         placeholder="Optional customer name"
         value={customerName}
-        onChangeText={setCustomerName}
+        onChangeText={(value) => {
+          setCustomerName(value);
+          setFieldErrors((current) => ({ ...current, customerName: "" }));
+        }}
       />
+      <FieldError message={fieldErrors.customerName} />
 
       <View style={styles.formCard}>
         <Text style={styles.sectionTitle}>Add Product to Order</Text>
+        <FieldError message={fieldErrors.product} />
 
         {loadingProducts ? (
           <View style={styles.loadingBox}>
@@ -229,7 +306,10 @@ export default function AddOrderScreen() {
                     styles.productOption,
                     isSelected && styles.selectedProductOption,
                   ]}
-                  onPress={() => setSelectedProductId(product.id)}
+                  onPress={() => {
+                    setSelectedProductId(product.id);
+                    setFieldErrors((current) => ({ ...current, product: "" }));
+                  }}
                 >
                   <Text
                     style={[
@@ -260,9 +340,13 @@ export default function AddOrderScreen() {
           style={styles.input}
           placeholder="Example: 1"
           value={quantity}
-          onChangeText={setQuantity}
+          onChangeText={(value) => {
+            setQuantity(value);
+            setFieldErrors((current) => ({ ...current, quantity: "" }));
+          }}
           keyboardType="numeric"
         />
+        <FieldError message={fieldErrors.quantity} />
 
         <Pressable style={styles.secondaryButton} onPress={handleAddItem}>
           <Text style={styles.secondaryButtonText}>Add Item</Text>
@@ -271,6 +355,7 @@ export default function AddOrderScreen() {
 
       <View style={styles.formCard}>
         <Text style={styles.sectionTitle}>Selected Items</Text>
+        <FieldError message={fieldErrors.selectedItems} />
 
         {items.length === 0 ? (
           <Text style={styles.emptyText}>No products added yet.</Text>

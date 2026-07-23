@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { FieldError } from "../components/FieldError";
 import {
   createExpense,
   ExpenseCategory,
@@ -31,8 +32,42 @@ export default function AddExpenseScreen() {
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const [fieldErrors, setFieldErrors] = useState({
+    title: "",
+    amount: "",
+    category: "",
+  });
+
+  const validateExpenseForm = () => {
+    const errors = {
+      title: "",
+      amount: "",
+      category: "",
+    };
+
+    if (!title.trim()) {
+      errors.title = "Expense title is required.";
+    }
+
+    if (!amount || Number(amount) < 0) {
+      errors.amount = "Amount must be 0 or more.";
+    }
+
+    if (!category) {
+      errors.category = "Category is required.";
+    }
+
+    setFieldErrors(errors);
+
+    return !Object.values(errors).some(Boolean);
+  };
+
   const handleSubmit = async () => {
     const parsedAmount = Number(amount);
+
+    if (!validateExpenseForm()) {
+      return;
+    }
 
     if (!title.trim()) {
       Alert.alert("Validation Error", "Expense title is required");
@@ -80,15 +115,20 @@ export default function AddExpenseScreen() {
           value={title}
           onChangeText={setTitle}
         />
+        <FieldError message={fieldErrors.title} />
 
         <Text style={styles.label}>Amount</Text>
         <TextInput
           style={styles.input}
           placeholder="Example: 25"
           value={amount}
-          onChangeText={setAmount}
+          onChangeText={(value) => {
+            setAmount(value);
+            setFieldErrors((current) => ({ ...current, amount: "" }));
+          }}
           keyboardType="numeric"
         />
+        <FieldError message={fieldErrors.amount} />
 
         <Text style={styles.label}>Category</Text>
 
