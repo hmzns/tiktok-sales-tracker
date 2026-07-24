@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { getDashboardSummary } from "../../api/dashboard";
 import { ErrorState } from "../../components/ErrorState";
+import { useRouter } from "expo-router";
 import { router, useFocusEffect } from "expo-router";
 
 type DashboardData = {
@@ -44,6 +45,7 @@ const formatRM = (value: number) => {
 };
 
 export default function HomeScreen() {
+  const router = useRouter();
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1;
@@ -211,6 +213,13 @@ export default function HomeScreen() {
           ))
         )}
       </View>
+
+      <Pressable
+        style={styles.guideButton}
+        onPress={() => router.push("/help/iphone")}
+      >
+        <Text style={styles.guideButtonText}>How to add app to iPhone</Text>
+      </Pressable>
     </ScrollView>
   );
 }
@@ -332,16 +341,27 @@ const styles = StyleSheet.create({
     color: "red",
   },
   linkButton: {
-  backgroundColor: "#111",
-  paddingVertical: 12,
-  paddingHorizontal: 16,
-  borderRadius: 10,
-  alignItems: "center",
-  marginBottom: 10,
+    backgroundColor: "#111",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignItems: "center",
+    marginBottom: 10,
   },
   linkButtonText: {
     color: "#fff",
     fontSize: 15,
     fontWeight: "800",
+  },
+  guideButton: {
+    backgroundColor: "#111",
+    borderRadius: 12,
+    padding: 14,
+    alignItems: "center",
+    marginTop: 16,
+  },
+  guideButtonText: {
+    color: "#fff",
+    fontWeight: "900",
   },
 });
