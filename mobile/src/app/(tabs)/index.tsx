@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   Pressable,
   RefreshControl,
@@ -13,6 +13,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { UI } from "../../constants/ui";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "expo-router";
+import { FloatingBackToTop } from "../../components/FloatingBackToTop";
 
 type DashboardData = {
   revenue: number;
@@ -55,13 +56,30 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [netProfitDifference, setNetProfitDifference] = useState<number | null>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   const loadDashboard = async () => {
     try {
       setError(null);
 
-      const data = await getDashboardSummary(currentYear, currentMonth);
+      const previousMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+      const previousYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+      const [data, previousData] = await Promise.all([
+        getDashboardSummary(currentYear, currentMonth),
+        getDashboardSummary(previousYear, previousMonth),
+      ]);
       setDashboard(data);
+      setNetProfitDifference(
+        previousData.netProfit === 0
+          ? data.netProfit === 0
+            ? 0
+            : 100
+          : ((data.netProfit - previousData.netProfit) /
+              Math.abs(previousData.netProfit)) *
+            100
+      );
     } catch (err) {
       setError("Failed to load dashboard");
     } finally {
@@ -103,17 +121,22 @@ export default function HomeScreen() {
   }
 
   return (
+    <View style={styles.screenShell}>
     <ScrollView
+      ref={scrollRef}
       style={styles.screen}
       contentContainerStyle={styles.content}
+      onScroll={(event) =>
+        setShowBackToTop(event.nativeEvent.contentOffset.y > 240)
+      }
+      scrollEventThrottle={16}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
       <View style={styles.pageHeader}>
         <View>
-          <Text style={styles.eyebrow}>OVERVIEW</Text>
-          <Text style={styles.title}>Good to see you.</Text>
+          <Text style={styles.title}>Good to see you, Sena!</Text>
           <Text style={styles.subtitle}>
             Your business at a glance · {currentMonth}/{currentYear}
           </Text>
@@ -125,43 +148,62 @@ export default function HomeScreen() {
         onPress={() => router.push("/stock-movements" as any)}
       >
         <View>
-          <Text style={styles.linkEyebrow}>INVENTORY</Text>
           <Text style={styles.linkButtonText}>Stock activity</Text>
         </View>
         <Text style={styles.linkArrow}>→</Text>
       </Pressable>
       
-      <View style={styles.grid}>
-        <View style={styles.card}>
+      <View style={styles.netProfitCard}>
+        <View>
+          <Text style={styles.netProfitLabel}>Net Profit</Text>
+          <Text style={[
+            styles.netProfitValue,
+            dashboard.netProfit >= 0 ? styles.positiveNetProfit : styles.negativeNetProfit,
+          ]}>
+            {formatRM(dashboard.netProfit)}
+          </Text>
+        </View>
+        <View style={styles.netProfitComparisonBox}>
+          <Text style={styles.netProfitComparisonLabel}>vs previous month</Text>
+          <Text style={[
+            styles.netProfitComparisonValue,
+            (netProfitDifference ?? 0) >= 0
+              ? styles.positiveNetProfit
+              : styles.negativeNetProfit,
+          ]}>
+            {netProfitDifference === null
+              ? "—"
+              : `${netProfitDifference >= 0 ? "↑" : "↓"} ${Math.abs(netProfitDifference).toFixed(1)}%`}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.metricsCard}>
+        <View style={styles.metricItem}>
           <Text style={styles.cardLabel}>Revenue</Text>
           <Text style={styles.cardValue}>{formatRM(dashboard.revenue)}</Text>
         </View>
 
-        <View style={styles.card}>
+        <View style={styles.metricItem}>
           <Text style={styles.cardLabel}>Sales Profit</Text>
           <Text style={styles.cardValue}>
             {formatRM(dashboard.salesProfit)}
           </Text>
         </View>
 
-        <View style={styles.card}>
+        <View style={styles.metricItem}>
           <Text style={styles.cardLabel}>Expenses</Text>
           <Text style={styles.cardValue}>
             {formatRM(dashboard.totalExpenses)}
           </Text>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>Net Profit</Text>
-          <Text style={styles.cardValue}>{formatRM(dashboard.netProfit)}</Text>
-        </View>
-
-        <View style={styles.card}>
+        <View style={styles.metricItem}>
           <Text style={styles.cardLabel}>Orders</Text>
           <Text style={styles.cardValue}>{dashboard.orderCount}</Text>
         </View>
 
-        <View style={styles.card}>
+        <View style={styles.metricItem}>
           <Text style={styles.cardLabel}>Items Sold</Text>
           <Text style={styles.cardValue}>{dashboard.itemsSold}</Text>
         </View>
@@ -231,6 +273,11 @@ export default function HomeScreen() {
         <Text style={styles.guideButtonText}>How to add app to iPhone</Text>
       </Pressable>
     </ScrollView>
+    <FloatingBackToTop
+      visible={showBackToTop}
+      onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+    />
+    </View>
   );
 }
 
@@ -239,6 +286,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: UI.colors.canvas,
   },
+  screenShell: { flex: 1, backgroundColor: UI.colors.canvas },
   content: {
     width: "100%",
     maxWidth: 760,
@@ -269,17 +317,33 @@ const styles = StyleSheet.create({
     color: UI.colors.inkMuted,
     marginTop: 4,
   },
-  grid: {
+  netProfitCard: {
+    backgroundColor: UI.colors.ink,
+    borderRadius: UI.radius.large,
+    padding: 22,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 12,
+    ...UI.shadow,
   },
-  card: {
+  netProfitLabel: { color: "#D0D5DD", fontSize: 13, marginBottom: 8 },
+  netProfitValue: { fontSize: 29, fontWeight: "800" },
+  netProfitComparisonBox: { alignItems: "flex-end" },
+  netProfitComparisonLabel: { color: "#D0D5DD", fontSize: 12, marginBottom: 8 },
+  netProfitComparisonValue: { fontSize: 29, fontWeight: "800", textAlign: "right" },
+  positiveNetProfit: { color: "#6CE9A6" },
+  negativeNetProfit: { color: "#FDA29B" },
+  metricsCard: {
     backgroundColor: UI.colors.surface,
     borderRadius: UI.radius.large,
-    padding: 18,
+    paddingHorizontal: 18,
     borderWidth: 1,
     borderColor: UI.colors.border,
     ...UI.shadow,
   },
+  metricItem: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: UI.colors.border },
   cardLabel: {
     fontSize: 12,
     color: UI.colors.inkMuted,

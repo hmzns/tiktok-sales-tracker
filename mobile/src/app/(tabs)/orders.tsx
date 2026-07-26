@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -20,6 +20,8 @@ import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { router, useFocusEffect } from "expo-router";
 import { UI } from "../../constants/ui";
+import { getDashboardSummary } from "../../api/dashboard";
+import { FloatingBackToTop } from "../../components/FloatingBackToTop";
 
 const formatRM = (value: number) => {
   return `RM ${value.toFixed(2)}`;
@@ -66,15 +68,36 @@ export default function OrdersScreen() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "ALL">("ALL");
   const [error, setError] = useState<string | null>(null);
+  const [monthDifference, setMonthDifference] = useState<number | null>(null);
+  const [profitSort, setProfitSort] = useState<"recent" | "highest" | "lowest">("recent");
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   const loadOrders = async () => {
     try {
       setError(null);
 
-      const result = await getOrders(1, 20, search, statusFilter);
+      const now = new Date();
+      const previousMonth = now.getMonth() === 0 ? 12 : now.getMonth();
+      const previousYear =
+        now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+      const [result, currentSummary, previousSummary] = await Promise.all([
+        getOrders(1, 20, search, statusFilter),
+        getDashboardSummary(now.getFullYear(), now.getMonth() + 1),
+        getDashboardSummary(previousYear, previousMonth),
+      ]);
 
       setOrders(result.orders);
       setTotal(result.meta.total);
+      const currentCount = currentSummary.orderCount;
+      const previousCount = previousSummary.orderCount;
+      setMonthDifference(
+        previousCount === 0
+          ? currentCount === 0
+            ? 0
+            : 100
+          : ((currentCount - previousCount) / previousCount) * 100
+      );
     } catch (err) {
       setError("Failed to load orders");
     } finally {
@@ -93,6 +116,12 @@ export default function OrdersScreen() {
     setRefreshing(true);
     loadOrders();
   };
+
+  const displayedOrders = [...orders].sort((a, b) => {
+    if (profitSort === "highest") return b.profit - a.profit;
+    if (profitSort === "lowest") return a.profit - b.profit;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
 
   const handleStatusUpdate = async (orderId: string, status: OrderStatus) => {
     try {
@@ -128,30 +157,48 @@ export default function OrdersScreen() {
   }
 
   return (
+    <View style={styles.screenShell}>
     <ScrollView
+      ref={scrollRef}
       style={styles.screen}
       contentContainerStyle={styles.content}
+      onScroll={(event) =>
+        setShowBackToTop(event.nativeEvent.contentOffset.y > 240)
+      }
+      scrollEventThrottle={16}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
       <View style={styles.pageHeader}>
         <View style={styles.flexItem}>
-          <Text style={styles.eyebrow}>SALES</Text>
           <Text style={styles.title}>Orders</Text>
           <Text style={styles.subtitle}>Manage fulfilment and customer sales</Text>
         </View>
         <Pressable
-          style={styles.addIconButton}
+          style={styles.headerAddButton}
           onPress={() => router.push("/add-order" as any)}
         >
-          <Text style={styles.addIconButtonText}>+</Text>
+          <Text style={styles.headerAddButtonText}>+ Add order</Text>
         </Pressable>
       </View>
 
       <View style={styles.summaryCard}>
-        <Text style={styles.summaryLabel}>Order records</Text>
-        <Text style={styles.summaryValue}>{total}</Text>
+        <View>
+          <Text style={styles.summaryLabel}>Order records</Text>
+          <Text style={styles.summaryValue}>{total}</Text>
+        </View>
+        <View style={styles.comparisonBox}>
+          <Text style={styles.comparisonLabel}>vs previous month</Text>
+          <Text style={[
+            styles.comparisonValue,
+            (monthDifference ?? 0) >= 0 ? styles.positiveComparison : styles.negativeComparison,
+          ]}>
+            {monthDifference === null
+              ? "—"
+              : `${monthDifference >= 0 ? "↑" : "↓"} ${Math.abs(monthDifference).toFixed(1)}%`}
+          </Text>
+        </View>
       </View>
 
       <View style={styles.toolsCard}>
@@ -195,6 +242,24 @@ export default function OrdersScreen() {
           </Pressable>
         ))}
         </ScrollView>
+        <Text style={styles.filterLabel}>SORT ORDERS</Text>
+        <View style={styles.sortRow}>
+          {[
+            { key: "recent", label: "Most recent" },
+            { key: "highest", label: "Highest profit" },
+            { key: "lowest", label: "Lowest profit" },
+          ].map((option) => (
+            <Pressable
+              key={option.key}
+              style={[styles.sortButton, profitSort === option.key && styles.activeSortButton]}
+              onPress={() => setProfitSort(option.key as typeof profitSort)}
+            >
+              <Text style={[styles.sortButtonText, profitSort === option.key && styles.activeSortButtonText]}>
+                {option.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
         <Text style={styles.resultText}>Showing {orders.length} of {total}</Text>
       </View>
 
@@ -204,7 +269,7 @@ export default function OrdersScreen() {
           message="Create your first order to start tracking revenue and stock movement."
         />
       ) : (
-        orders.map((order) => (
+        displayedOrders.map((order) => (
           <View key={order.id} style={styles.card}>
             <View style={styles.cardHeader}>
               <View style={styles.flexItem}>
@@ -255,12 +320,16 @@ export default function OrdersScreen() {
               }
             >
               <Text style={styles.detailsButtonText}>View order</Text>
-              <Text style={styles.detailsArrow}>→</Text>
             </Pressable>
           </View>
         ))
       )}
     </ScrollView>
+    <FloatingBackToTop
+      visible={showBackToTop}
+      onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+    />
+    </View>
   );
 }
 
@@ -269,6 +338,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: UI.colors.canvas,
   },
+  screenShell: { flex: 1, backgroundColor: UI.colors.canvas },
   content: {
     width: "100%",
     maxWidth: 760,
@@ -312,11 +382,16 @@ const styles = StyleSheet.create({
   },
   pageHeader: { flexDirection: "row", alignItems: "center", gap: 16, marginBottom: 22 },
   eyebrow: { color: UI.colors.primary, fontSize: 11, fontWeight: "800", letterSpacing: 1.5, marginBottom: 5 },
-  addIconButton: { width: 48, height: 48, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: UI.colors.primary, ...UI.shadow },
-  addIconButtonText: { color: "#fff", fontSize: 28, lineHeight: 30 },
-  summaryCard: { minHeight: 104, borderRadius: UI.radius.large, padding: 20, marginBottom: 16, backgroundColor: UI.colors.ink, ...UI.shadow },
+  headerAddButton: { minHeight: 44, alignItems: "center", justifyContent: "center", backgroundColor: UI.colors.primary, borderRadius: UI.radius.small, paddingHorizontal: 16, ...UI.shadow },
+  headerAddButtonText: { color: "#fff", fontSize: 13, fontWeight: "800" },
+  summaryCard: { minHeight: 104, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, borderRadius: UI.radius.large, padding: 20, marginBottom: 16, backgroundColor: UI.colors.ink, ...UI.shadow },
   summaryLabel: { color: "#D0D5DD", fontSize: 13, marginBottom: 7 },
   summaryValue: { color: "#fff", fontSize: 30, fontWeight: "800" },
+  comparisonBox: { alignItems: "flex-end" },
+  comparisonLabel: { color: "#D0D5DD", fontSize: 12, marginBottom: 7 },
+  comparisonValue: { fontSize: 30, fontWeight: "800", textAlign: "right" },
+  positiveComparison: { color: "#6CE9A6" },
+  negativeComparison: { color: "#FDA29B" },
   toolsCard: { backgroundColor: UI.colors.surface, borderRadius: UI.radius.large, padding: 14, borderWidth: 1, borderColor: UI.colors.border, marginBottom: 16, ...UI.shadow },
   searchRow: { minHeight: 50, flexDirection: "row", alignItems: "center", backgroundColor: UI.colors.surfaceMuted, borderWidth: 1, borderColor: UI.colors.border, borderRadius: UI.radius.medium, paddingLeft: 14 },
   searchGlyph: { color: UI.colors.inkMuted, fontSize: 22, marginRight: 8 },
@@ -516,6 +591,11 @@ const styles = StyleSheet.create({
   filterScroll: {
     marginBottom: 10,
   },
+  sortRow: { flexDirection: "row", gap: 7 },
+  sortButton: { flex: 1, minHeight: 38, alignItems: "center", justifyContent: "center", backgroundColor: UI.colors.surfaceMuted, borderWidth: 1, borderColor: UI.colors.border, borderRadius: UI.radius.small, paddingHorizontal: 6 },
+  activeSortButton: { backgroundColor: UI.colors.ink, borderColor: UI.colors.ink },
+  sortButtonText: { color: UI.colors.inkMuted, fontSize: 10, fontWeight: "700", textAlign: "center" },
+  activeSortButtonText: { color: "#fff" },
   filterChip: {
     backgroundColor: UI.colors.surface,
     borderWidth: 1,
@@ -538,19 +618,19 @@ const styles = StyleSheet.create({
     color: UI.colors.primary,
   },
   detailsButton: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    backgroundColor: UI.colors.surfaceMuted,
+    justifyContent: "center",
+    backgroundColor: "rgba(16, 24, 40, 1.00)",
     borderWidth: 1,
-    borderColor: UI.colors.border,
+    borderColor: "rgba(16, 24, 40, 1.00)",
     borderRadius: 10,
     padding: 12,
     alignItems: "center",
     marginTop: 12,
   },
   detailsButtonText: {
-    color: UI.colors.ink,
+    color: "#FFFFFF",
     fontWeight: "700",
+    textAlign: "center",
   },
   detailsArrow: { color: UI.colors.primary, fontSize: 17, fontWeight: "700" },
 });

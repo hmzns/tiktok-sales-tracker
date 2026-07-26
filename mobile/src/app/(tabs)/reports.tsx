@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   Alert,
   Platform,
@@ -9,12 +9,12 @@ import {
   Text,
   View,
 } from "react-native";
-import { apiClient } from "../../api/client";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { getMonthlyReport, MonthlyReport } from "../../api/reports";
 import { useFocusEffect } from "expo-router";
 import { UI } from "../../constants/ui";
+import { FloatingBackToTop } from "../../components/FloatingBackToTop";
 
 const formatRM = (value: number) => {
   return `RM ${value.toFixed(2)}`;
@@ -42,16 +42,33 @@ export default function ReportsScreen() {
   const [month, setMonth] = useState(now.getMonth() + 1);
 
   const [report, setReport] = useState<MonthlyReport | null>(null);
+  const [netProfitDifference, setNetProfitDifference] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   const loadReport = async () => {
     try {
       setError(null);
 
-      const result = await getMonthlyReport(year, month);
+      const previousMonth = month === 1 ? 12 : month - 1;
+      const previousYear = month === 1 ? year - 1 : year;
+      const [result, previousReport] = await Promise.all([
+        getMonthlyReport(year, month),
+        getMonthlyReport(previousYear, previousMonth),
+      ]);
       setReport(result);
+      const currentNetProfit = result.summary.netProfit;
+      const previousNetProfit = previousReport.summary.netProfit;
+      setNetProfitDifference(
+        previousNetProfit === 0
+          ? currentNetProfit === 0
+            ? 0
+            : 100
+          : ((currentNetProfit - previousNetProfit) / Math.abs(previousNetProfit)) * 100
+      );
     } catch (err) {
       setError("Failed to load monthly report");
     } finally {
@@ -274,93 +291,21 @@ export default function ReportsScreen() {
     URL.revokeObjectURL(url);
   };
 
-  const fetchAllPages = async (endpoint: string) => {
-    const limit = 1000;
-    let page = 1;
-    let allItems: any[] = [];
-
-    while (true) {
-      const response = await apiClient.get(endpoint, {
-        params: {
-          page,
-          limit,
-        },
-      });
-
-      const items = response.data.data ?? [];
-      allItems = [...allItems, ...items];
-
-      if (items.length < limit) {
-        break;
-      }
-
-      page += 1;
-    }
-
-    return allItems;
-  };
-
-  const handleExportFullBackup = async () => {
-    if (Platform.OS !== "web") {
-      Alert.alert(
-        "Export not available",
-        "Full backup export is currently available on the web version only."
-      );
-      return;
-    }
-
-    try {
-      const [products, orders, expenses] = await Promise.all([
-        fetchAllPages("/products"),
-        fetchAllPages("/orders"),
-        fetchAllPages("/expenses"),
-      ]);
-
-      const backup = {
-        backupName: "TikTok Sales Tracker Full Backup",
-        backupVersion: 1,
-        exportedAt: new Date().toISOString(),
-        data: {
-          products,
-          orders,
-          expenses,
-        },
-      };
-
-      const json = JSON.stringify(backup, null, 2);
-
-      const blob = new Blob([json], {
-        type: "application/json;charset=utf-8;",
-      });
-
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-
-      link.href = url;
-      link.download = `tiktok-sales-tracker-backup-${new Date()
-        .toISOString()
-        .slice(0, 10)}.json`;
-
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      Alert.alert("Backup failed", "Unable to export full backup.");
-    }
-  };
-
   return (
+    <View style={styles.screenShell}>
     <ScrollView
+      ref={scrollRef}
       style={styles.screen}
       contentContainerStyle={styles.content}
+      onScroll={(event) =>
+        setShowBackToTop(event.nativeEvent.contentOffset.y > 240)
+      }
+      scrollEventThrottle={16}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
       <View style={styles.pageHeader}>
-        <Text style={styles.eyebrow}>PERFORMANCE</Text>
         <Text style={styles.title}>Monthly report</Text>
         <Text style={styles.subtitle}>Revenue, profit, and operating insights</Text>
       </View>
@@ -382,41 +327,19 @@ export default function ReportsScreen() {
         <Text style={styles.exportPanelTitle}>Export data</Text>
         <View style={styles.exportActions}>
           <Pressable style={styles.exportButton} onPress={handleExportCsv}>
-            <Text style={styles.exportButtonText}>Full report</Text>
+            <Text style={styles.exportButtonText}>
+              Full report · {monthNames[month - 1]} {year}
+            </Text>
           </Pressable>
           <Pressable style={styles.secondaryExportButton} onPress={handleExportOrdersCsv}>
-            <Text style={styles.secondaryExportButtonText}>Orders CSV</Text>
-          </Pressable>
-          <Pressable style={styles.backupButton} onPress={handleExportFullBackup}>
-            <Text style={styles.backupButtonText}>Backup</Text>
+            <Text style={styles.secondaryExportButtonText}>Orders</Text>
           </Pressable>
         </View>
       </View>
 
-      <View style={styles.grid}>
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>Revenue</Text>
-          <Text style={styles.cardValue}>
-            {formatRM(report.summary.totalRevenue)}
-          </Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>Sales Profit</Text>
-          <Text style={styles.cardValue}>
-            {formatRM(report.summary.salesProfit)}
-          </Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>Expenses</Text>
-          <Text style={styles.cardValue}>
-            {formatRM(report.summary.totalExpenses)}
-          </Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>Net Profit</Text>
+      <View style={styles.netProfitCard}>
+        <View>
+          <Text style={styles.netProfitLabel}>Net Profit</Text>
           <Text
             style={
               report.summary.netProfit >= 0
@@ -427,13 +350,49 @@ export default function ReportsScreen() {
             {formatRM(report.summary.netProfit)}
           </Text>
         </View>
+        <View style={styles.netProfitComparisonBox}>
+          <Text style={styles.netProfitComparisonLabel}>vs previous month</Text>
+          <Text style={[
+            styles.netProfitComparisonValue,
+            (netProfitDifference ?? 0) >= 0
+              ? styles.positiveComparison
+              : styles.negativeComparison,
+          ]}>
+            {netProfitDifference === null
+              ? "—"
+              : `${netProfitDifference >= 0 ? "↑" : "↓"} ${Math.abs(netProfitDifference).toFixed(1)}%`}
+          </Text>
+        </View>
+      </View>
 
-        <View style={styles.card}>
+      <View style={styles.metricsCard}>
+        <View style={styles.metricItem}>
+          <Text style={styles.cardLabel}>Revenue</Text>
+          <Text style={styles.cardValue}>
+            {formatRM(report.summary.totalRevenue)}
+          </Text>
+        </View>
+
+        <View style={styles.metricItem}>
+          <Text style={styles.cardLabel}>Sales Profit</Text>
+          <Text style={styles.cardValue}>
+            {formatRM(report.summary.salesProfit)}
+          </Text>
+        </View>
+
+        <View style={styles.metricItem}>
+          <Text style={styles.cardLabel}>Expenses</Text>
+          <Text style={styles.cardValue}>
+            {formatRM(report.summary.totalExpenses)}
+          </Text>
+        </View>
+
+        <View style={styles.metricItem}>
           <Text style={styles.cardLabel}>Orders</Text>
           <Text style={styles.cardValue}>{report.summary.totalOrders}</Text>
         </View>
 
-        <View style={styles.card}>
+        <View style={styles.metricItem}>
           <Text style={styles.cardLabel}>Items Sold</Text>
           <Text style={styles.cardValue}>{report.summary.totalItemsSold}</Text>
         </View>
@@ -482,21 +441,6 @@ export default function ReportsScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Expenses by Category</Text>
-
-        {report.expensesByCategory.length === 0 ? (
-          <Text style={styles.emptyText}>No expenses for this month.</Text>
-        ) : (
-          report.expensesByCategory.map((expense) => (
-            <View key={expense.category} style={styles.listItem}>
-              <Text style={styles.itemTitle}>{expense.category}</Text>
-              <Text style={styles.moneyText}>{formatRM(expense.amount)}</Text>
-            </View>
-          ))
-        )}
-      </View>
-
-      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Orders</Text>
 
         {report.orderRows.length === 0 ? (
@@ -512,16 +456,9 @@ export default function ReportsScreen() {
                   {order.customerName ?? "No customer"} | {order.status}
                 </Text>
               </View>
-
               <View style={styles.rightBox}>
                 <Text style={styles.moneyText}>{formatRM(order.total)}</Text>
-                <Text
-                  style={
-                    order.profit >= 0
-                      ? styles.smallProfitText
-                      : styles.smallLossText
-                  }
-                >
+                <Text style={order.profit >= 0 ? styles.smallProfitText : styles.smallLossText}>
                   Profit {formatRM(order.profit)}
                 </Text>
               </View>
@@ -529,7 +466,27 @@ export default function ReportsScreen() {
           ))
         )}
       </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Expenses by Category</Text>
+
+        {report.expensesByCategory.length === 0 ? (
+          <Text style={styles.emptyText}>No expenses for this month.</Text>
+        ) : (
+          report.expensesByCategory.map((expense) => (
+            <View key={expense.category} style={styles.listItem}>
+              <Text style={styles.itemTitle}>{expense.category}</Text>
+              <Text style={styles.moneyText}>{formatRM(expense.amount)}</Text>
+            </View>
+          ))
+        )}
+      </View>
     </ScrollView>
+    <FloatingBackToTop
+      visible={showBackToTop}
+      onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+    />
+    </View>
   );
 }
 
@@ -538,6 +495,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: UI.colors.canvas,
   },
+  screenShell: { flex: 1, backgroundColor: UI.colors.canvas },
   content: {
     width: "100%",
     maxWidth: 760,
@@ -610,17 +568,32 @@ const styles = StyleSheet.create({
   exportPanel: { backgroundColor: UI.colors.surface, borderWidth: 1, borderColor: UI.colors.border, borderRadius: UI.radius.large, padding: 14, marginBottom: 16, ...UI.shadow },
   exportPanelTitle: { color: UI.colors.inkMuted, fontSize: 10, fontWeight: "800", letterSpacing: 1, marginBottom: 10 },
   exportActions: { flexDirection: "row", gap: 8 },
-  grid: {
+  netProfitCard: {
+    backgroundColor: UI.colors.ink,
+    borderRadius: UI.radius.large,
+    padding: 22,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 12,
+    ...UI.shadow,
   },
-  card: {
+  netProfitLabel: { color: "#D0D5DD", fontSize: 13, marginBottom: 8 },
+  netProfitComparisonBox: { alignItems: "flex-end" },
+  netProfitComparisonLabel: { color: "#D0D5DD", fontSize: 12, marginBottom: 8 },
+  netProfitComparisonValue: { fontSize: 24, fontWeight: "800", textAlign: "right" },
+  positiveComparison: { color: "#6CE9A6" },
+  negativeComparison: { color: "#FDA29B" },
+  metricsCard: {
     backgroundColor: UI.colors.surface,
     borderRadius: UI.radius.large,
-    padding: 18,
+    paddingHorizontal: 18,
     borderWidth: 1,
     borderColor: UI.colors.border,
     ...UI.shadow,
   },
+  metricItem: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: UI.colors.border },
   cardLabel: {
     fontSize: 14,
     color: UI.colors.inkMuted,
@@ -634,12 +607,12 @@ const styles = StyleSheet.create({
   positiveValue: {
     fontSize: 24,
     fontWeight: "800",
-    color: UI.colors.success,
+    color: "#6CE9A6",
   },
   negativeValue: {
     fontSize: 24,
     fontWeight: "800",
-    color: UI.colors.danger,
+    color: "#FDA29B",
   },
   section: {
     backgroundColor: UI.colors.surface,

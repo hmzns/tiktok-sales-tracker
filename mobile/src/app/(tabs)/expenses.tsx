@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiClient } from "../../api/client";
 import {
   Alert,
@@ -17,6 +17,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { Expense, ExpenseCategory, deleteExpense, getExpenses } from "../../api/expenses";
 import { UI } from "../../constants/ui";
+import { FloatingBackToTop } from "../../components/FloatingBackToTop";
 
 const formatRM = (value: number) => {
   return `RM ${value.toFixed(2)}`;
@@ -53,6 +54,8 @@ export default function ExpensesScreen() {
   const [categoryFilter, setCategoryFilter] =
     useState<ExpenseCategory | "ALL">("ALL");
   const [error, setError] = useState<string | null>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   const loadExpenses = async () => {
     try {
@@ -79,7 +82,7 @@ export default function ExpensesScreen() {
 
   useEffect(() => {
     loadExpenses();
-  }, []);
+  }, [categoryFilter]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -218,31 +221,41 @@ export default function ExpensesScreen() {
   };
 
   return (
+    <View style={styles.screenShell}>
     <ScrollView
+      ref={scrollRef}
       style={styles.screen}
       contentContainerStyle={styles.content}
+      onScroll={(event) =>
+        setShowBackToTop(event.nativeEvent.contentOffset.y > 240)
+      }
+      scrollEventThrottle={16}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
       <View style={styles.pageHeader}>
         <View style={styles.flexItem}>
-          <Text style={styles.eyebrow}>MONEY OUT</Text>
           <Text style={styles.title}>Expenses</Text>
           <Text style={styles.subtitle}>
-            Track and control your business spending
+            You might wanna think twice on your spending
           </Text>
         </View>
-        <Pressable
-          style={({ pressed }) => [
-            styles.addIconButton,
-            pressed && styles.primaryPressed,
-          ]}
-          onPress={() => router.push("/add-expense" as any)}
-          accessibilityLabel="Add expense"
-        >
-          <Text style={styles.addIconButtonText}>+</Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable style={styles.headerExportButton} onPress={handleExportExpensesCsv}>
+            <Text style={styles.headerExportButtonText}>Export</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [
+              styles.headerAddButton,
+              pressed && styles.primaryPressed,
+            ]}
+            onPress={() => router.push("/add-expense" as any)}
+            accessibilityLabel="Add expense"
+          >
+            <Text style={styles.headerAddButtonText}>+ Add expense</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.summaryCard}>
@@ -307,9 +320,6 @@ export default function ExpensesScreen() {
           <Text style={styles.resultText}>
             Showing {expenses.length} of {total}
           </Text>
-          <Pressable onPress={handleExportExpensesCsv} style={styles.exportLink}>
-            <Text style={styles.exportButtonText}>Export CSV ↗</Text>
-          </Pressable>
         </View>
       </View>
 
@@ -368,6 +378,11 @@ export default function ExpensesScreen() {
         ))
       )}
     </ScrollView>
+    <FloatingBackToTop
+      visible={showBackToTop}
+      onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+    />
+    </View>
   );
 }
 
@@ -376,6 +391,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: UI.colors.canvas,
   },
+  screenShell: { flex: 1, backgroundColor: UI.colors.canvas },
   content: {
     width: "100%",
     maxWidth: 760,
@@ -409,24 +425,63 @@ const styles = StyleSheet.create({
     color: UI.colors.inkMuted,
     marginTop: 4,
   },
-  addIconButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+  headerActions: { flexDirection: "row", gap: 8 },
+  headerExportButton: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: UI.colors.surface,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
+    borderRadius: UI.radius.small,
+    paddingHorizontal: 13,
+  },
+  headerExportButtonText: { color: UI.colors.ink, fontSize: 12, fontWeight: "700" },
+  headerAddButton: {
+    minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: UI.colors.primary,
+    borderRadius: UI.radius.small,
+    paddingHorizontal: 16,
     ...UI.shadow,
+  },
+  headerAddButtonText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  secondaryAction: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: UI.colors.surface,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
+    borderRadius: UI.radius.small,
+  },
+  secondaryActionText: {
+    color: UI.colors.ink,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  primaryAction: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: UI.colors.primary,
+    borderRadius: UI.radius.small,
   },
   primaryPressed: {
     backgroundColor: UI.colors.primaryPressed,
     transform: [{ scale: 0.98 }],
   },
-  addIconButtonText: {
+  primaryActionText: {
     color: "#FFFFFF",
-    fontSize: 28,
-    fontWeight: "400",
-    lineHeight: 30,
+    fontSize: 12,
+    fontWeight: "800",
   },
   summaryCard: {
     minHeight: 128,
