@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
-  FlatList,
   Platform,
   Pressable,
   RefreshControl,
@@ -22,6 +20,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { apiClient } from "../../api/client";
 import { router, useFocusEffect } from "expo-router";
+import { UI } from "../../constants/ui";
 
 const formatRM = (value: number) => {
   return `RM ${value.toFixed(2)}`;
@@ -179,57 +178,53 @@ export default function ProductsScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <Text style={styles.title}>Products</Text>
-      <Text style={styles.subtitle}>Total products: {total}</Text>
+      <View style={styles.pageHeader}>
+        <View style={styles.flexItem}>
+          <Text style={styles.eyebrow}>INVENTORY</Text>
+          <Text style={styles.title}>Products</Text>
+          <Text style={styles.subtitle}>Manage pricing, stock, and availability</Text>
+        </View>
+        <Pressable style={styles.addIconButton} onPress={() => router.push("/add-product")}>
+          <Text style={styles.addIconButtonText}>+</Text>
+        </Pressable>
+      </View>
 
-      <Pressable style={styles.exportButton} onPress={handleExportProductsCsv}>
-        <Text style={styles.exportButtonText}>Export Products CSV</Text>
-      </Pressable>
-
-      <Pressable
-        style={styles.addButton}
-        onPress={() => router.push("/add-product")}
-      >
-        <Text style={styles.addButtonText}>Add Product</Text>
-      </Pressable>
-
-      <Pressable
-        style={styles.secondaryButton}
-        onPress={() => router.push("/product-categories" as any)}
-      >
-        <Text style={styles.secondaryButtonText}>Manage Categories</Text>
-      </Pressable>
-
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Search by product name or SKU..."
-        value={search}
-        onChangeText={setSearch}
-        onSubmitEditing={loadProducts}
-      />
-
-      <Pressable style={styles.searchButton} onPress={loadProducts}>
-        <Text style={styles.searchButtonText}>Search</Text>
-      </Pressable>
-
-      <Pressable
-        style={[
-          styles.lowStockButton,
-          showLowStockOnly && styles.activeLowStockButton,
-        ]}
-        onPress={() => {
-          setShowLowStockOnly((current) => !current);
-        }}
-      >
-        <Text
-          style={[
-            styles.lowStockButtonText,
-            showLowStockOnly && styles.activeLowStockButtonText,
-          ]}
-        >
-          {showLowStockOnly ? "Showing Low Stock" : "Show Low Stock Only"}
-        </Text>
-      </Pressable>
+      <View style={styles.toolsCard}>
+        <View style={styles.searchRow}>
+          <Text style={styles.searchGlyph}>⌕</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Product name or SKU"
+            placeholderTextColor={UI.colors.inkSubtle}
+            value={search}
+            onChangeText={setSearch}
+            onSubmitEditing={loadProducts}
+            returnKeyType="search"
+          />
+          <Pressable style={styles.searchButton} onPress={loadProducts}>
+            <Text style={styles.searchButtonText}>Search</Text>
+          </Pressable>
+        </View>
+        <View style={styles.toolFooter}>
+          <Pressable
+            style={[styles.lowStockButton, showLowStockOnly && styles.activeLowStockButton]}
+            onPress={() => setShowLowStockOnly((current) => !current)}
+          >
+            <Text style={[styles.lowStockButtonText, showLowStockOnly && styles.activeLowStockButtonText]}>
+              {showLowStockOnly ? "Low stock only" : "All stock"}
+            </Text>
+          </Pressable>
+          <Text style={styles.resultText}>{products.length} products</Text>
+        </View>
+        <View style={styles.linkRow}>
+          <Pressable onPress={() => router.push("/product-categories" as any)}>
+            <Text style={styles.secondaryButtonText}>Manage categories</Text>
+          </Pressable>
+          <Pressable onPress={handleExportProductsCsv}>
+            <Text style={styles.exportButtonText}>Export CSV ↗</Text>
+          </Pressable>
+        </View>
+      </View>
 
       {products.length === 0 ? (
         <EmptyState
@@ -309,7 +304,8 @@ export default function ProductsScreen() {
                   })
                 }
               >
-                <Text style={styles.editButtonText}>Edit Product</Text>
+                <Text style={styles.editButtonText}>Edit product</Text>
+                <Text style={styles.editArrow}>→</Text>
               </Pressable>
             </View>
           );
@@ -322,11 +318,15 @@ export default function ProductsScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#f7f7f7",
+    backgroundColor: UI.colors.canvas,
   },
   content: {
+    width: "100%",
+    maxWidth: 760,
+    alignSelf: "center",
     padding: 20,
-    paddingBottom: 40,
+    paddingTop: 28,
+    paddingBottom: 48,
   },
   center: {
     flex: 1,
@@ -351,21 +351,33 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   title: {
-    fontSize: 28,
+    color: UI.colors.ink,
+    fontSize: 30,
     fontWeight: "800",
-    marginBottom: 4,
+    letterSpacing: -0.7,
   },
   subtitle: {
     fontSize: 14,
-    color: "#666",
-    marginBottom: 20,
+    color: UI.colors.inkMuted,
+    marginTop: 4,
   },
+  pageHeader: { flexDirection: "row", alignItems: "center", gap: 16, marginBottom: 22 },
+  eyebrow: { color: UI.colors.primary, fontSize: 11, fontWeight: "800", letterSpacing: 1.5, marginBottom: 5 },
+  addIconButton: { width: 48, height: 48, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: UI.colors.primary, ...UI.shadow },
+  addIconButtonText: { color: "#fff", fontSize: 28, lineHeight: 30 },
+  toolsCard: { backgroundColor: UI.colors.surface, borderRadius: UI.radius.large, padding: 14, borderWidth: 1, borderColor: UI.colors.border, marginBottom: 16, ...UI.shadow },
+  searchRow: { minHeight: 50, flexDirection: "row", alignItems: "center", backgroundColor: UI.colors.surfaceMuted, borderWidth: 1, borderColor: UI.colors.border, borderRadius: UI.radius.medium, paddingLeft: 14 },
+  searchGlyph: { color: UI.colors.inkMuted, fontSize: 22, marginRight: 8 },
+  toolFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12 },
+  linkRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: UI.colors.border, paddingTop: 12, marginTop: 12, paddingHorizontal: 2 },
+  resultText: { color: UI.colors.inkMuted, fontSize: 12 },
   emptyBox: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
+    backgroundColor: UI.colors.surface,
+    borderRadius: UI.radius.large,
     padding: 18,
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: UI.colors.border,
+    ...UI.shadow,
   },
   emptyText: {
     fontSize: 14,
@@ -390,13 +402,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   productName: {
-    fontSize: 18,
-    fontWeight: "800",
+    color: UI.colors.ink,
+    fontSize: 16,
+    fontWeight: "700",
   },
   sku: {
     marginTop: 4,
     fontSize: 13,
-    color: "#666",
+    color: UI.colors.inkMuted,
   },
   stockBadge: {
     minWidth: 46,
@@ -406,32 +419,32 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   lowStockBadge: {
-    backgroundColor: "#ffe5e5",
+    backgroundColor: UI.colors.dangerSoft,
   },
   normalStockBadge: {
-    backgroundColor: "#e8f5e9",
+    backgroundColor: UI.colors.successSoft,
   },
   stockBadgeText: {
     fontSize: 16,
     fontWeight: "800",
   },
   lowStockText: {
-    color: "red",
+    color: UI.colors.danger,
   },
   normalStockText: {
-    color: "green",
+    color: UI.colors.success,
   },
   infoRow: {
     paddingVertical: 8,
     borderTopWidth: 1,
-    borderTopColor: "#eee",
+    borderTopColor: UI.colors.border,
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 12,
   },
   label: {
     fontSize: 14,
-    color: "#666",
+    color: UI.colors.inkMuted,
   },
   value: {
     fontSize: 14,
@@ -442,18 +455,18 @@ const styles = StyleSheet.create({
   activeStatus: {
     fontSize: 14,
     fontWeight: "700",
-    color: "green",
+    color: UI.colors.success,
   },
   inactiveStatus: {
     fontSize: 14,
     fontWeight: "700",
-    color: "red",
+    color: UI.colors.danger,
   },
   warningText: {
     marginTop: 12,
     fontSize: 13,
     fontWeight: "700",
-    color: "red",
+    color: UI.colors.danger,
   },
   addButton: {
     backgroundColor: "#111",
@@ -468,55 +481,60 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   searchInput: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    padding: 12,
+    flex: 1,
+    color: UI.colors.ink,
     fontSize: 14,
-    marginBottom: 10,
-  },
+    paddingVertical: 12,
+    outlineStyle: "none",
+  } as any,
   searchButton: {
-    backgroundColor: "#111",
-    borderRadius: 10,
-    padding: 12,
-    alignItems: "center",
-    marginBottom: 16,
+    alignSelf: "stretch",
+    justifyContent: "center",
+    backgroundColor: UI.colors.ink,
+    borderRadius: 11,
+    paddingHorizontal: 16,
+    margin: 4,
   },
   searchButtonText: {
     color: "#fff",
     fontWeight: "800",
   },
   editButton: {
-    backgroundColor: "#111",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    backgroundColor: UI.colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
     borderRadius: 10,
     padding: 12,
     alignItems: "center",
     marginTop: 12,
   },
   editButtonText: {
-    color: "#fff",
-    fontWeight: "800",
+    color: UI.colors.ink,
+    fontWeight: "700",
   },
+  editArrow: { color: UI.colors.primary, fontSize: 17, fontWeight: "700" },
   lowStockButton: {
-    backgroundColor: "#fff4d6",
+    backgroundColor: UI.colors.surfaceMuted,
     borderWidth: 1,
-    borderColor: "#e0b84d",
-    borderRadius: 10,
-    padding: 12,
+    borderColor: UI.colors.border,
+    borderRadius: UI.radius.pill,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     alignItems: "center",
-    marginBottom: 16,
   },
   activeLowStockButton: {
-    backgroundColor: "#111",
-    borderColor: "#111",
+    backgroundColor: UI.colors.warningSoft,
+    borderColor: "#FEC84B",
   },
   lowStockButtonText: {
-    color: "#8a5a00",
-    fontWeight: "800",
+    color: UI.colors.inkMuted,
+    fontSize: 12,
+    fontWeight: "700",
   },
   activeLowStockButtonText: {
-    color: "#fff",
+    color: UI.colors.warning,
   },
   secondaryButton: {
     backgroundColor: "#fff",
@@ -528,8 +546,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   secondaryButtonText: {
-    color: "#111",
-    fontWeight: "800",
+    color: UI.colors.ink,
+    fontSize: 12,
+    fontWeight: "700",
   },
   exportButton: {
     backgroundColor: "#111",
@@ -539,7 +558,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   exportButtonText: {
-    color: "#fff",
-    fontWeight: "900",
+    color: UI.colors.primary,
+    fontSize: 12,
+    fontWeight: "700",
   },
 });

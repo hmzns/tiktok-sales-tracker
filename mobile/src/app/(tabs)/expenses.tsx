@@ -2,7 +2,6 @@ import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { apiClient } from "../../api/client";
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   Platform,
@@ -17,6 +16,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { Expense, ExpenseCategory, deleteExpense, getExpenses } from "../../api/expenses";
+import { UI } from "../../constants/ui";
 
 const formatRM = (value: number) => {
   return `RM ${value.toFixed(2)}`;
@@ -225,68 +225,93 @@ export default function ExpensesScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <Text style={styles.title}>Expenses</Text>
-      <Text style={styles.subtitle}>Total expenses: {total}</Text>
-
-      <Pressable style={styles.exportButton} onPress={handleExportExpensesCsv}>
-        <Text style={styles.exportButtonText}>Export Expenses CSV</Text>
-      </Pressable>
-
-      <View style={styles.summaryCard}>
-        <Text style={styles.summaryLabel}>Shown Total</Text>
-        <Text style={styles.summaryValue}>{formatRM(totalAmount)}</Text>
+      <View style={styles.pageHeader}>
+        <View style={styles.flexItem}>
+          <Text style={styles.eyebrow}>MONEY OUT</Text>
+          <Text style={styles.title}>Expenses</Text>
+          <Text style={styles.subtitle}>
+            Track and control your business spending
+          </Text>
+        </View>
+        <Pressable
+          style={({ pressed }) => [
+            styles.addIconButton,
+            pressed && styles.primaryPressed,
+          ]}
+          onPress={() => router.push("/add-expense" as any)}
+          accessibilityLabel="Add expense"
+        >
+          <Text style={styles.addIconButtonText}>+</Text>
+        </Pressable>
       </View>
 
-      <Pressable
-        style={styles.addButton}
-        onPress={() => router.push("/add-expense" as any)}
-      >
-        <Text style={styles.addButtonText}>Add Expense</Text>
-      </Pressable>
+      <View style={styles.summaryCard}>
+        <View>
+          <Text style={styles.summaryLabel}>Shown total</Text>
+          <Text style={styles.summaryValue}>{formatRM(totalAmount)}</Text>
+        </View>
+        <View style={styles.countPill}>
+          <Text style={styles.countValue}>{total}</Text>
+          <Text style={styles.countLabel}>records</Text>
+        </View>
+      </View>
 
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Search expense title..."
-        value={search}
-        onChangeText={setSearch}
-        onSubmitEditing={loadExpenses}
-      />
-
-      <Pressable style={styles.searchButton} onPress={loadExpenses}>
-        <Text style={styles.searchButtonText}>Search</Text>
-      </Pressable>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterScroll}
-      >
-        {CATEGORY_FILTERS.map((category) => (
-          <Pressable
-            key={category}
-            style={[
-              styles.filterChip,
-              categoryFilter === category && styles.activeFilterChip,
-            ]}
-            onPress={() => {
-              setCategoryFilter(category);
-            }}
-          >
-            <Text
-              style={[
-                styles.filterChipText,
-                categoryFilter === category && styles.activeFilterChipText,
-              ]}
-            >
-              {category}
-            </Text>
+      <View style={styles.toolsCard}>
+        <View style={styles.searchRow}>
+          <Text style={styles.searchGlyph}>⌕</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search expenses"
+            placeholderTextColor={UI.colors.inkSubtle}
+            value={search}
+            onChangeText={setSearch}
+            onSubmitEditing={loadExpenses}
+            returnKeyType="search"
+          />
+          <Pressable style={styles.searchButton} onPress={loadExpenses}>
+            <Text style={styles.searchButtonText}>Search</Text>
           </Pressable>
-        ))}
-      </ScrollView>
+        </View>
 
-      <Pressable style={styles.searchButton} onPress={loadExpenses}>
-        <Text style={styles.searchButtonText}>Apply Filter</Text>
-      </Pressable>
+        <Text style={styles.filterLabel}>FILTER BY CATEGORY</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterScroll}
+          contentContainerStyle={styles.filterContent}
+        >
+          {CATEGORY_FILTERS.map((category) => (
+            <Pressable
+              key={category}
+              style={[
+                styles.filterChip,
+                categoryFilter === category && styles.activeFilterChip,
+              ]}
+              onPress={() => {
+                setCategoryFilter(category);
+              }}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  categoryFilter === category && styles.activeFilterChipText,
+                ]}
+              >
+                {category === "ALL" ? "All" : category.toLowerCase()}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+
+        <View style={styles.toolFooter}>
+          <Text style={styles.resultText}>
+            Showing {expenses.length} of {total}
+          </Text>
+          <Pressable onPress={handleExportExpensesCsv} style={styles.exportLink}>
+            <Text style={styles.exportButtonText}>Export CSV ↗</Text>
+          </Pressable>
+        </View>
+      </View>
 
       {expenses.length === 0 ? (
         <EmptyState
@@ -304,13 +329,14 @@ export default function ExpensesScreen() {
                 </Text>
               </View>
 
-              <Text style={styles.amount}>{formatRM(expense.amount)}</Text>
+              <View style={styles.amountBox}>
+                <Text style={styles.amount}>{formatRM(expense.amount)}</Text>
+              </View>
             </View>
 
-            <View style={styles.infoRow}>
-              <Text style={styles.label}>Category</Text>
-              <Text style={styles.value}>{expense.category}</Text>
-            </View>
+            <Text style={styles.categoryBadge}>
+              {expense.category.toLowerCase()}
+            </Text>
 
             {expense.description ? (
               <View style={styles.descriptionBox}>
@@ -318,24 +344,26 @@ export default function ExpensesScreen() {
               </View>
             ) : null}
 
-            <Pressable
-              style={styles.editButton}
-              onPress={() =>
-                router.push({
-                  pathname: "/edit-expense" as any,
-                  params: { expenseId: expense.id },
-                })
-              }
-            >
-              <Text style={styles.editButtonText}>Edit Expense</Text>
-            </Pressable>
+            <View style={styles.cardActions}>
+              <Pressable
+                style={styles.editButton}
+                onPress={() =>
+                  router.push({
+                    pathname: "/edit-expense" as any,
+                    params: { expenseId: expense.id },
+                  })
+                }
+              >
+                <Text style={styles.editButtonText}>Edit</Text>
+              </Pressable>
 
-            <Pressable
-              style={styles.deleteButton}
-              onPress={() => handleDeleteExpense(expense.id)}
-            >
-              <Text style={styles.deleteButtonText}>Delete Expense</Text>
-            </Pressable>
+              <Pressable
+                style={styles.deleteButton}
+                onPress={() => handleDeleteExpense(expense.id)}
+              >
+                <Text style={styles.deleteButtonText}>Delete</Text>
+              </Pressable>
+            </View>
           </View>
         ))
       )}
@@ -346,217 +374,300 @@ export default function ExpensesScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#f7f7f7",
+    backgroundColor: UI.colors.canvas,
   },
   content: {
+    width: "100%",
+    maxWidth: 760,
+    alignSelf: "center",
     padding: 20,
-    paddingBottom: 40,
+    paddingTop: 28,
+    paddingBottom: 48,
   },
-  center: {
-    flex: 1,
+  pageHeader: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-    backgroundColor: "#fff",
+    gap: 16,
+    marginBottom: 22,
   },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-  },
-  errorText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "red",
-    marginBottom: 8,
-  },
-  smallText: {
-    fontSize: 14,
-    color: "#666",
-    textAlign: "center",
+  eyebrow: {
+    color: UI.colors.primary,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+    marginBottom: 5,
   },
   title: {
-    fontSize: 28,
+    color: UI.colors.ink,
+    fontSize: 30,
     fontWeight: "800",
-    marginBottom: 4,
+    letterSpacing: -0.7,
   },
   subtitle: {
     fontSize: 14,
-    color: "#666",
-    marginBottom: 16,
+    lineHeight: 20,
+    color: UI.colors.inkMuted,
+    marginTop: 4,
+  },
+  addIconButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: UI.colors.primary,
+    ...UI.shadow,
+  },
+  primaryPressed: {
+    backgroundColor: UI.colors.primaryPressed,
+    transform: [{ scale: 0.98 }],
+  },
+  addIconButtonText: {
+    color: "#FFFFFF",
+    fontSize: 28,
+    fontWeight: "400",
+    lineHeight: 30,
   },
   summaryCard: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "#eee",
-    marginBottom: 14,
+    minHeight: 128,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: UI.colors.ink,
+    borderRadius: UI.radius.large,
+    padding: 22,
+    marginBottom: 16,
+    overflow: "hidden",
+    ...UI.shadow,
   },
   summaryLabel: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 6,
+    fontSize: 13,
+    color: "#D0D5DD",
+    marginBottom: 8,
   },
   summaryValue: {
-    fontSize: 24,
-    fontWeight: "900",
+    color: "#FFFFFF",
+    fontSize: 29,
+    fontWeight: "800",
+    letterSpacing: -0.5,
   },
-  addButton: {
-    backgroundColor: "#111",
-    borderRadius: 10,
-    paddingVertical: 12,
+  countPill: {
+    minWidth: 72,
     alignItems: "center",
-    marginBottom: 16,
+    backgroundColor: "#FFFFFF14",
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
   },
-  addButtonText: {
-    color: "#fff",
-    fontSize: 15,
+  countValue: {
+    color: "#FFFFFF",
+    fontSize: 20,
     fontWeight: "800",
   },
-  emptyBox: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "#eee",
+  countLabel: {
+    color: "#D0D5DD",
+    fontSize: 11,
+    marginTop: 2,
   },
-  emptyText: {
+  toolsCard: {
+    backgroundColor: UI.colors.surface,
+    borderRadius: UI.radius.large,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
+    marginBottom: 16,
+    ...UI.shadow,
+  },
+  searchRow: {
+    minHeight: 50,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: UI.colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
+    borderRadius: UI.radius.medium,
+    paddingLeft: 14,
+  },
+  searchGlyph: {
+    color: UI.colors.inkMuted,
+    fontSize: 22,
+    marginRight: 8,
+    transform: [{ rotate: "-15deg" }],
+  },
+  searchInput: {
+    flex: 1,
+    color: UI.colors.ink,
     fontSize: 14,
-    color: "#777",
+    paddingVertical: 12,
+    outlineStyle: "none",
+  } as any,
+  searchButton: {
+    alignSelf: "stretch",
+    justifyContent: "center",
+    borderRadius: 11,
+    backgroundColor: UI.colors.ink,
+    paddingHorizontal: 16,
+    margin: 4,
+  },
+  searchButtonText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  filterLabel: {
+    color: UI.colors.inkMuted,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+    marginTop: 16,
+    marginBottom: 9,
+    marginLeft: 2,
+  },
+  filterScroll: {
+    marginHorizontal: -14,
+  },
+  filterContent: {
+    paddingHorizontal: 14,
+  },
+  filterChip: {
+    backgroundColor: UI.colors.surface,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
+    borderRadius: UI.radius.pill,
+    paddingVertical: 8,
+    paddingHorizontal: 13,
+    marginRight: 7,
+  },
+  activeFilterChip: {
+    backgroundColor: UI.colors.primarySoft,
+    borderColor: "#F9A8B8",
+  },
+  filterChipText: {
+    color: UI.colors.inkMuted,
+    fontSize: 12,
+    fontWeight: "600",
+    textTransform: "capitalize",
+  },
+  activeFilterChipText: {
+    color: UI.colors.primary,
+    fontWeight: "700",
+  },
+  toolFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderTopWidth: 1,
+    borderTopColor: UI.colors.border,
+    paddingTop: 12,
+    marginTop: 14,
+    paddingHorizontal: 2,
+  },
+  resultText: {
+    color: UI.colors.inkMuted,
+    fontSize: 12,
+  },
+  exportLink: {
+    paddingVertical: 5,
+    paddingLeft: 12,
+  },
+  exportButtonText: {
+    color: UI.colors.primary,
+    fontSize: 12,
+    fontWeight: "700",
   },
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
+    backgroundColor: UI.colors.surface,
+    borderRadius: UI.radius.large,
     padding: 18,
-    marginBottom: 14,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: UI.colors.border,
+    ...UI.shadow,
   },
   cardHeader: {
     flexDirection: "row",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,
-    marginBottom: 14,
+    marginBottom: 12,
   },
   flexItem: {
     flex: 1,
   },
   expenseTitle: {
-    fontSize: 18,
-    fontWeight: "800",
+    color: UI.colors.ink,
+    fontSize: 16,
+    fontWeight: "700",
   },
   expenseDate: {
     marginTop: 4,
-    fontSize: 13,
-    color: "#666",
+    fontSize: 12,
+    color: UI.colors.inkMuted,
+  },
+  amountBox: {
+    backgroundColor: UI.colors.primarySoft,
+    borderRadius: UI.radius.small,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
   },
   amount: {
-    fontSize: 16,
-    fontWeight: "900",
-  },
-  infoRow: {
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: "#eee",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  label: {
+    color: UI.colors.primary,
     fontSize: 14,
-    color: "#666",
+    fontWeight: "800",
   },
-  value: {
-    fontSize: 14,
+  categoryBadge: {
+    alignSelf: "flex-start",
+    overflow: "hidden",
+    color: UI.colors.inkMuted,
+    backgroundColor: UI.colors.surfaceMuted,
+    borderRadius: UI.radius.pill,
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    fontSize: 11,
     fontWeight: "700",
-    textAlign: "right",
-    flex: 1,
+    textTransform: "capitalize",
   },
   descriptionBox: {
-    marginTop: 10,
+    marginTop: 12,
     padding: 12,
-    backgroundColor: "#f7f7f7",
-    borderRadius: 10,
+    backgroundColor: UI.colors.surfaceMuted,
+    borderRadius: UI.radius.small,
   },
   description: {
     fontSize: 13,
-    color: "#555",
+    lineHeight: 19,
+    color: UI.colors.inkMuted,
   },
-  searchInput: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 14,
-    marginBottom: 10,
-  },
-  searchButton: {
-    backgroundColor: "#111",
-    borderRadius: 10,
-    padding: 12,
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  searchButtonText: {
-    color: "#fff",
-    fontWeight: "800",
-  },
-  filterScroll: {
-    marginBottom: 10,
-  },
-  filterChip: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginRight: 8,
-  },
-  activeFilterChip: {
-    backgroundColor: "#111",
-    borderColor: "#111",
-  },
-  filterChipText: {
-    color: "#333",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  activeFilterChipText: {
-    color: "#fff",
+  cardActions: {
+    flexDirection: "row",
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: UI.colors.border,
+    marginTop: 14,
+    paddingTop: 12,
   },
   editButton: {
-    backgroundColor: "#111",
-    borderRadius: 10,
-    padding: 12,
+    flex: 1,
+    backgroundColor: UI.colors.ink,
+    borderRadius: UI.radius.small,
+    paddingVertical: 10,
     alignItems: "center",
-    marginTop: 12,
   },
   editButtonText: {
-    color: "#fff",
-    fontWeight: "800",
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
   },
   deleteButton: {
-    backgroundColor: "#ffecec",
-    borderRadius: 10,
-    padding: 12,
+    backgroundColor: UI.colors.dangerSoft,
+    borderRadius: UI.radius.small,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
     alignItems: "center",
-    marginTop: 8,
   },
   deleteButtonText: {
-    color: "#cc3333",
-    fontWeight: "800",
-  },
-  exportButton: {
-    backgroundColor: "#111",
-    borderRadius: 10,
-    padding: 12,
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  exportButtonText: {
-    color: "#fff",
-    fontWeight: "900",
+    color: UI.colors.danger,
+    fontSize: 13,
+    fontWeight: "700",
   },
 });

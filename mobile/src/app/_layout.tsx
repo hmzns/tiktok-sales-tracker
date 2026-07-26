@@ -3,6 +3,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { useColorScheme } from "react-native";
 
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
+import { UI } from "@/constants/ui";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -13,7 +14,15 @@ export default function RootLayout() {
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
 
-      <Stack>
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: UI.colors.surface },
+          headerTintColor: UI.colors.ink,
+          headerTitleStyle: { fontWeight: "700" },
+          headerShadowVisible: false,
+          contentStyle: { backgroundColor: UI.colors.canvas },
+        }}
+      >
         <Stack.Screen
           name="(tabs)"
           options={{

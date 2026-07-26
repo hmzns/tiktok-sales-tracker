@@ -1,0 +1,33 @@
+export const UI = {
+  colors: {
+    canvas: "#F4F6FA",
+    surface: "#FFFFFF",
+    surfaceMuted: "#F8FAFC",
+    ink: "#101828",
+    inkMuted: "#667085",
+    inkSubtle: "#98A2B3",
+    border: "#E4E7EC",
+    primary: "#E92C55",
+    primaryPressed: "#C91F45",
+    primarySoft: "#FFF0F3",
+    success: "#067647",
+    successSoft: "#ECFDF3",
+    warning: "#B54708",
+    warningSoft: "#FFFAEB",
+    danger: "#B42318",
+    dangerSoft: "#FEF3F2",
+  },
+  radius: {
+    small: 10,
+    medium: 14,
+    large: 20,
+    pill: 999,
+  },
+  shadow: {
+    shadowColor: "#101828",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+} as const;

@@ -1,6 +1,5 @@
 import { useCallback, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   RefreshControl,
@@ -20,6 +19,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { router, useFocusEffect } from "expo-router";
+import { UI } from "../../constants/ui";
 
 const formatRM = (value: number) => {
   return `RM ${value.toFixed(2)}`;
@@ -135,33 +135,44 @@ export default function OrdersScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <Text style={styles.title}>Orders</Text>
-      <Text style={styles.subtitle}>Total orders: {total}</Text>
+      <View style={styles.pageHeader}>
+        <View style={styles.flexItem}>
+          <Text style={styles.eyebrow}>SALES</Text>
+          <Text style={styles.title}>Orders</Text>
+          <Text style={styles.subtitle}>Manage fulfilment and customer sales</Text>
+        </View>
+        <Pressable
+          style={styles.addIconButton}
+          onPress={() => router.push("/add-order" as any)}
+        >
+          <Text style={styles.addIconButtonText}>+</Text>
+        </Pressable>
+      </View>
 
-      <Pressable
-        style={styles.addButton}
-        onPress={() => router.push("/add-order" as any)}
-      >
-        <Text style={styles.addButtonText}>Create Order</Text>
-      </Pressable>
+      <View style={styles.summaryCard}>
+        <Text style={styles.summaryLabel}>Order records</Text>
+        <Text style={styles.summaryValue}>{total}</Text>
+      </View>
 
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Search by customer or order number..."
-        value={search}
-        onChangeText={setSearch}
-        onSubmitEditing={loadOrders}
-      />
+      <View style={styles.toolsCard}>
+        <View style={styles.searchRow}>
+          <Text style={styles.searchGlyph}>⌕</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Customer or order number"
+            placeholderTextColor={UI.colors.inkSubtle}
+            value={search}
+            onChangeText={setSearch}
+            onSubmitEditing={loadOrders}
+            returnKeyType="search"
+          />
+          <Pressable style={styles.searchButton} onPress={loadOrders}>
+            <Text style={styles.searchButtonText}>Search</Text>
+          </Pressable>
+        </View>
 
-      <Pressable style={styles.searchButton} onPress={loadOrders}>
-        <Text style={styles.searchButtonText}>Search</Text>
-      </Pressable>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterScroll}
-      >
+        <Text style={styles.filterLabel}>FILTER BY STATUS</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
         {STATUS_FILTERS.map((status) => (
           <Pressable
             key={status}
@@ -179,15 +190,13 @@ export default function OrdersScreen() {
                 statusFilter === status && styles.activeFilterChipText,
               ]}
             >
-              {status}
+              {status === "ALL" ? "All" : status.toLowerCase()}
             </Text>
           </Pressable>
         ))}
-      </ScrollView>
-
-      <Pressable style={styles.searchButton} onPress={loadOrders}>
-        <Text style={styles.searchButtonText}>Apply Filter</Text>
-      </Pressable>
+        </ScrollView>
+        <Text style={styles.resultText}>Showing {orders.length} of {total}</Text>
+      </View>
 
       {orders.length === 0 ? (
         <EmptyState
@@ -245,10 +254,9 @@ export default function OrdersScreen() {
                 })
               }
             >
-              <Text style={styles.detailsButtonText}>View Details</Text>
+              <Text style={styles.detailsButtonText}>View order</Text>
+              <Text style={styles.detailsArrow}>→</Text>
             </Pressable>
-
-            <View style={styles.itemsBox}></View>
           </View>
         ))
       )}
@@ -259,11 +267,15 @@ export default function OrdersScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#f7f7f7",
+    backgroundColor: UI.colors.canvas,
   },
   content: {
+    width: "100%",
+    maxWidth: 760,
+    alignSelf: "center",
     padding: 20,
-    paddingBottom: 40,
+    paddingTop: 28,
+    paddingBottom: 48,
   },
   center: {
     flex: 1,
@@ -288,15 +300,28 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   title: {
-    fontSize: 28,
+    color: UI.colors.ink,
+    fontSize: 30,
     fontWeight: "800",
-    marginBottom: 4,
+    letterSpacing: -0.7,
   },
   subtitle: {
     fontSize: 14,
-    color: "#666",
-    marginBottom: 20,
+    color: UI.colors.inkMuted,
+    marginTop: 4,
   },
+  pageHeader: { flexDirection: "row", alignItems: "center", gap: 16, marginBottom: 22 },
+  eyebrow: { color: UI.colors.primary, fontSize: 11, fontWeight: "800", letterSpacing: 1.5, marginBottom: 5 },
+  addIconButton: { width: 48, height: 48, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: UI.colors.primary, ...UI.shadow },
+  addIconButtonText: { color: "#fff", fontSize: 28, lineHeight: 30 },
+  summaryCard: { minHeight: 104, borderRadius: UI.radius.large, padding: 20, marginBottom: 16, backgroundColor: UI.colors.ink, ...UI.shadow },
+  summaryLabel: { color: "#D0D5DD", fontSize: 13, marginBottom: 7 },
+  summaryValue: { color: "#fff", fontSize: 30, fontWeight: "800" },
+  toolsCard: { backgroundColor: UI.colors.surface, borderRadius: UI.radius.large, padding: 14, borderWidth: 1, borderColor: UI.colors.border, marginBottom: 16, ...UI.shadow },
+  searchRow: { minHeight: 50, flexDirection: "row", alignItems: "center", backgroundColor: UI.colors.surfaceMuted, borderWidth: 1, borderColor: UI.colors.border, borderRadius: UI.radius.medium, paddingLeft: 14 },
+  searchGlyph: { color: UI.colors.inkMuted, fontSize: 22, marginRight: 8 },
+  filterLabel: { color: UI.colors.inkMuted, fontSize: 10, fontWeight: "800", letterSpacing: 1, marginTop: 16, marginBottom: 9 },
+  resultText: { color: UI.colors.inkMuted, fontSize: 12, borderTopWidth: 1, borderTopColor: UI.colors.border, paddingTop: 12, marginTop: 12 },
   emptyBox: {
     backgroundColor: "#fff",
     borderRadius: 14,
@@ -309,12 +334,13 @@ const styles = StyleSheet.create({
     color: "#777",
   },
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
+    backgroundColor: UI.colors.surface,
+    borderRadius: UI.radius.large,
     padding: 18,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: UI.colors.border,
+    ...UI.shadow,
   },
   cardHeader: {
     flexDirection: "row",
@@ -326,13 +352,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   orderNumber: {
-    fontSize: 18,
-    fontWeight: "800",
+    color: UI.colors.ink,
+    fontSize: 16,
+    fontWeight: "700",
   },
   customerName: {
     marginTop: 4,
     fontSize: 13,
-    color: "#666",
+    color: UI.colors.inkMuted,
   },
   statusBadge: {
     fontSize: 12,
@@ -344,28 +371,28 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   goodStatus: {
-    backgroundColor: "#e8f5e9",
-    color: "green",
+    backgroundColor: UI.colors.successSoft,
+    color: UI.colors.success,
   },
   badStatus: {
-    backgroundColor: "#ffe5e5",
-    color: "red",
+    backgroundColor: UI.colors.dangerSoft,
+    color: UI.colors.danger,
   },
   neutralStatus: {
-    backgroundColor: "#eee",
-    color: "#333",
+    backgroundColor: UI.colors.warningSoft,
+    color: UI.colors.warning,
   },
   infoRow: {
     paddingVertical: 8,
     borderTopWidth: 1,
-    borderTopColor: "#eee",
+    borderTopColor: UI.colors.border,
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 12,
   },
   label: {
     fontSize: 14,
-    color: "#666",
+    color: UI.colors.inkMuted,
   },
   value: {
     fontSize: 14,
@@ -376,12 +403,12 @@ const styles = StyleSheet.create({
   profitText: {
     fontSize: 14,
     fontWeight: "800",
-    color: "green",
+    color: UI.colors.success,
   },
   lossText: {
     fontSize: 14,
     fontWeight: "800",
-    color: "red",
+    color: UI.colors.danger,
   },
   itemsBox: {
     marginTop: 12,
@@ -468,20 +495,19 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   searchInput: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    padding: 12,
+    flex: 1,
+    color: UI.colors.ink,
     fontSize: 14,
-    marginBottom: 10,
-  },
+    paddingVertical: 12,
+    outlineStyle: "none",
+  } as any,
   searchButton: {
-    backgroundColor: "#111",
-    borderRadius: 10,
-    padding: 12,
-    alignItems: "center",
-    marginBottom: 12,
+    alignSelf: "stretch",
+    justifyContent: "center",
+    backgroundColor: UI.colors.ink,
+    borderRadius: 11,
+    paddingHorizontal: 16,
+    margin: 4,
   },
   searchButtonText: {
     color: "#fff",
@@ -491,37 +517,40 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   filterChip: {
-    backgroundColor: "#fff",
+    backgroundColor: UI.colors.surface,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: UI.colors.border,
     borderRadius: 999,
     paddingVertical: 8,
     paddingHorizontal: 12,
     marginRight: 8,
   },
   activeFilterChip: {
-    backgroundColor: "#111",
-    borderColor: "#111",
+    backgroundColor: UI.colors.primarySoft,
+    borderColor: "#F9A8B8",
   },
   filterChipText: {
-    color: "#333",
+    color: UI.colors.inkMuted,
     fontSize: 12,
     fontWeight: "700",
   },
   activeFilterChipText: {
-    color: "#fff",
+    color: UI.colors.primary,
   },
   detailsButton: {
-    backgroundColor: "#fff",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    backgroundColor: UI.colors.surfaceMuted,
     borderWidth: 1,
-    borderColor: "#111",
+    borderColor: UI.colors.border,
     borderRadius: 10,
     padding: 12,
     alignItems: "center",
     marginTop: 12,
   },
   detailsButtonText: {
-    color: "#111",
-    fontWeight: "800",
+    color: UI.colors.ink,
+    fontWeight: "700",
   },
+  detailsArrow: { color: UI.colors.primary, fontSize: 17, fontWeight: "700" },
 });

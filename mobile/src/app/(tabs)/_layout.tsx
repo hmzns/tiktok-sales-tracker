@@ -1,31 +1,40 @@
 import { Tabs } from "expo-router";
+import { StyleSheet, Text } from "react-native";
+import { UI } from "../../constants/ui";
+
+const TabIcon = ({
+  label,
+  focused,
+}: {
+  label: string;
+  focused: boolean;
+}) => (
+  <Text style={[styles.icon, focused && styles.activeIcon]}>{label}</Text>
+);
 
 export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: true,
-
+        headerShown: false,
         tabBarStyle: {
-          backgroundColor: "#000000",
-          borderTopColor: "#ddd",
-          height: 60,
-          paddingTop: 3,
+          backgroundColor: UI.colors.surface,
+          borderTopColor: UI.colors.border,
+          borderTopWidth: 1,
+          height: 72,
+          paddingTop: 8,
+          paddingBottom: 8,
         },
-
         tabBarItemStyle: {
-          borderRadius: 10,
-          marginHorizontal: 4,
-          marginVertical: 6,
+          borderRadius: UI.radius.medium,
+          marginHorizontal: 2,
         },
-
-        tabBarActiveBackgroundColor: "#111",
-        tabBarActiveTintColor: "#fff",
-        tabBarInactiveTintColor: "#ffffff",
-
+        tabBarActiveTintColor: UI.colors.primary,
+        tabBarInactiveTintColor: UI.colors.inkMuted,
         tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: "700",
+          fontSize: 11,
+          fontWeight: "600",
+          marginTop: 1,
         },
       }}
     >
@@ -34,6 +43,9 @@ export default function TabsLayout() {
         options={{
           title: "Dashboard",
           tabBarLabel: "Home",
+          tabBarIcon: ({ focused }) => (
+            <TabIcon label="⌂" focused={focused} />
+          ),
         }}
       />
 
@@ -42,6 +54,9 @@ export default function TabsLayout() {
         options={{
           title: "Products",
           tabBarLabel: "Products",
+          tabBarIcon: ({ focused }) => (
+            <TabIcon label="□" focused={focused} />
+          ),
         }}
       />
 
@@ -50,6 +65,9 @@ export default function TabsLayout() {
         options={{
           title: "Orders",
           tabBarLabel: "Orders",
+          tabBarIcon: ({ focused }) => (
+            <TabIcon label="≡" focused={focused} />
+          ),
         }}
       />
 
@@ -58,6 +76,9 @@ export default function TabsLayout() {
         options={{
           title: "Expenses",
           tabBarLabel: "Expenses",
+          tabBarIcon: ({ focused }) => (
+            <TabIcon label="−" focused={focused} />
+          ),
         }}
       />
 
@@ -66,8 +87,28 @@ export default function TabsLayout() {
         options={{
           title: "Reports",
           tabBarLabel: "Reports",
+          tabBarIcon: ({ focused }) => (
+            <TabIcon label="↗" focused={focused} />
+          ),
         }}
       />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  icon: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    color: UI.colors.inkMuted,
+    fontSize: 19,
+    fontWeight: "700",
+    lineHeight: 23,
+    textAlign: "center",
+  },
+  activeIcon: {
+    color: UI.colors.primary,
+    backgroundColor: UI.colors.primarySoft,
+  },
+});

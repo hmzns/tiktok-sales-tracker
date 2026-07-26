@@ -1,6 +1,5 @@
 import { useCallback, useState } from "react";
 import {
-  ActivityIndicator,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -10,8 +9,10 @@ import {
 } from "react-native";
 import { getDashboardSummary } from "../../api/dashboard";
 import { ErrorState } from "../../components/ErrorState";
+import { LoadingState } from "../../components/LoadingState";
+import { UI } from "../../constants/ui";
 import { useRouter } from "expo-router";
-import { router, useFocusEffect } from "expo-router";
+import { useFocusEffect } from "expo-router";
 
 type DashboardData = {
   revenue: number;
@@ -82,10 +83,10 @@ export default function HomeScreen() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-        <Text style={styles.loadingText}>Loading dashboard...</Text>
-      </View>
+      <LoadingState
+        title="Preparing your dashboard"
+        message="Pulling together this month's sales, expenses, and stock."
+      />
     );
   }
 
@@ -109,16 +110,25 @@ export default function HomeScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <Text style={styles.title}>TikTok Sales Tracker</Text>
-      <Text style={styles.subtitle}>
-        Dashboard for {currentMonth}/{currentYear}
-      </Text>
+      <View style={styles.pageHeader}>
+        <View>
+          <Text style={styles.eyebrow}>OVERVIEW</Text>
+          <Text style={styles.title}>Good to see you.</Text>
+          <Text style={styles.subtitle}>
+            Your business at a glance · {currentMonth}/{currentYear}
+          </Text>
+        </View>
+      </View>
 
       <Pressable
         style={styles.linkButton}
         onPress={() => router.push("/stock-movements" as any)}
       >
-        <Text style={styles.linkButtonText}>Stock Activity & Adjustment</Text>
+        <View>
+          <Text style={styles.linkEyebrow}>INVENTORY</Text>
+          <Text style={styles.linkButtonText}>Stock activity</Text>
+        </View>
+        <Text style={styles.linkArrow}>→</Text>
       </Pressable>
       
       <View style={styles.grid}>
@@ -157,7 +167,7 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <View style={styles.section}>
+      <View style={styles.highlightSection}>
         <Text style={styles.sectionTitle}>Average Order Value</Text>
         <Text style={styles.sectionValue}>
           {formatRM(dashboard.averageOrderValue)}
@@ -227,88 +237,96 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#f7f7f7",
+    backgroundColor: UI.colors.canvas,
   },
   content: {
+    width: "100%",
+    maxWidth: 760,
+    alignSelf: "center",
     padding: 20,
-    paddingBottom: 40,
+    paddingTop: 28,
+    paddingBottom: 48,
   },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-    backgroundColor: "#fff",
+  pageHeader: {
+    marginBottom: 22,
   },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-  },
-  errorText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "red",
-    marginBottom: 8,
-  },
-  smallText: {
-    fontSize: 14,
-    color: "#666",
-    textAlign: "center",
+  eyebrow: {
+    color: UI.colors.primary,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+    marginBottom: 5,
   },
   title: {
-    fontSize: 28,
+    color: UI.colors.ink,
+    fontSize: 30,
     fontWeight: "800",
-    marginBottom: 4,
+    letterSpacing: -0.7,
   },
   subtitle: {
     fontSize: 14,
-    color: "#666",
-    marginBottom: 20,
+    lineHeight: 20,
+    color: UI.colors.inkMuted,
+    marginTop: 4,
   },
   grid: {
     gap: 12,
   },
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
+    backgroundColor: UI.colors.surface,
+    borderRadius: UI.radius.large,
     padding: 18,
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: UI.colors.border,
+    ...UI.shadow,
   },
   cardLabel: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 6,
+    fontSize: 12,
+    color: UI.colors.inkMuted,
+    marginBottom: 8,
   },
   cardValue: {
-    fontSize: 24,
+    color: UI.colors.ink,
+    fontSize: 23,
     fontWeight: "800",
+    letterSpacing: -0.4,
   },
   section: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
+    backgroundColor: UI.colors.surface,
+    borderRadius: UI.radius.large,
     padding: 18,
     marginTop: 16,
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: UI.colors.border,
+    ...UI.shadow,
+  },
+  highlightSection: {
+    backgroundColor: UI.colors.primarySoft,
+    borderRadius: UI.radius.large,
+    padding: 20,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: "#FBC5CF",
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: "800",
+    color: UI.colors.ink,
+    fontSize: 16,
+    fontWeight: "700",
     marginBottom: 12,
   },
   sectionValue: {
-    fontSize: 22,
+    color: UI.colors.primary,
+    fontSize: 24,
     fontWeight: "800",
   },
   emptyText: {
     fontSize: 14,
-    color: "#777",
+    color: UI.colors.inkMuted,
   },
   listItem: {
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: "#eee",
+    borderTopColor: UI.colors.border,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -319,12 +337,13 @@ const styles = StyleSheet.create({
   },
   itemTitle: {
     fontSize: 15,
+    color: UI.colors.ink,
     fontWeight: "700",
   },
   itemSubtitle: {
     marginTop: 3,
     fontSize: 13,
-    color: "#666",
+    color: UI.colors.inkMuted,
   },
   stockText: {
     fontSize: 14,
@@ -333,35 +352,52 @@ const styles = StyleSheet.create({
   positiveQty: {
     fontSize: 16,
     fontWeight: "800",
-    color: "green",
+    color: UI.colors.success,
   },
   negativeQty: {
     fontSize: 16,
     fontWeight: "800",
-    color: "red",
+    color: UI.colors.danger,
   },
   linkButton: {
-    backgroundColor: "#111",
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 10,
+    backgroundColor: UI.colors.ink,
+    minHeight: 76,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    borderRadius: UI.radius.large,
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 10,
+    justifyContent: "space-between",
+    marginBottom: 16,
+    ...UI.shadow,
+  },
+  linkEyebrow: {
+    color: "#98A2B3",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    marginBottom: 4,
   },
   linkButtonText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "800",
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  linkArrow: {
+    color: "#FFFFFF",
+    fontSize: 24,
   },
   guideButton: {
-    backgroundColor: "#111",
-    borderRadius: 12,
+    backgroundColor: UI.colors.surface,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
+    borderRadius: UI.radius.medium,
     padding: 14,
     alignItems: "center",
     marginTop: 16,
   },
   guideButtonText: {
-    color: "#fff",
-    fontWeight: "900",
+    color: UI.colors.ink,
+    fontWeight: "700",
   },
 });

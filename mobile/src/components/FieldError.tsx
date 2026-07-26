@@ -1,4 +1,5 @@
 import { StyleSheet, Text } from "react-native";
+import { UI } from "../constants/ui";
 
 type FieldErrorProps = {
   message?: string;
@@ -14,10 +15,11 @@ export function FieldError({ message }: FieldErrorProps) {
 
 const styles = StyleSheet.create({
   errorText: {
-    color: "#dc2626",
-    fontSize: 13,
-    fontWeight: "700",
-    marginTop: 4,
-    marginBottom: 8,
+    color: UI.colors.danger,
+    fontSize: 12,
+    fontWeight: "600",
+    lineHeight: 18,
+    marginTop: 6,
+    marginBottom: 6,
   },
 });

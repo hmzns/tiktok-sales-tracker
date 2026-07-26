@@ -1,6 +1,5 @@
 import { useCallback, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Platform,
   Pressable,
@@ -15,6 +14,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { getMonthlyReport, MonthlyReport } from "../../api/reports";
 import { useFocusEffect } from "expo-router";
+import { UI } from "../../constants/ui";
 
 const formatRM = (value: number) => {
   return `RM ${value.toFixed(2)}`;
@@ -359,34 +359,38 @@ export default function ReportsScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <Text style={styles.title}>Monthly Report</Text>
-      <Text style={styles.subtitle}>
-        {monthNames[month - 1]} {year}
-      </Text>
-
-      <Pressable style={styles.exportButton} onPress={handleExportCsv}>
-        <Text style={styles.exportButtonText}>Export Full Report CSV</Text>
-      </Pressable>
-
-      <Pressable
-        style={styles.secondaryExportButton}
-        onPress={handleExportOrdersCsv}
-      >
-        <Text style={styles.secondaryExportButtonText}>Export Orders CSV</Text>
-      </Pressable>
-
-      <Pressable style={styles.backupButton} onPress={handleExportFullBackup}>
-        <Text style={styles.backupButtonText}>Export Full Backup</Text>
-      </Pressable>
+      <View style={styles.pageHeader}>
+        <Text style={styles.eyebrow}>PERFORMANCE</Text>
+        <Text style={styles.title}>Monthly report</Text>
+        <Text style={styles.subtitle}>Revenue, profit, and operating insights</Text>
+      </View>
 
       <View style={styles.monthControls}>
         <Pressable style={styles.monthButton} onPress={goPreviousMonth}>
-          <Text style={styles.monthButtonText}>Previous</Text>
+          <Text style={styles.monthButtonText}>←</Text>
         </Pressable>
-
+        <View style={styles.monthCurrent}>
+          <Text style={styles.monthLabel}>{monthNames[month - 1]}</Text>
+          <Text style={styles.yearLabel}>{year}</Text>
+        </View>
         <Pressable style={styles.monthButton} onPress={goNextMonth}>
-          <Text style={styles.monthButtonText}>Next</Text>
+          <Text style={styles.monthButtonText}>→</Text>
         </Pressable>
+      </View>
+
+      <View style={styles.exportPanel}>
+        <Text style={styles.exportPanelTitle}>Export data</Text>
+        <View style={styles.exportActions}>
+          <Pressable style={styles.exportButton} onPress={handleExportCsv}>
+            <Text style={styles.exportButtonText}>Full report</Text>
+          </Pressable>
+          <Pressable style={styles.secondaryExportButton} onPress={handleExportOrdersCsv}>
+            <Text style={styles.secondaryExportButtonText}>Orders CSV</Text>
+          </Pressable>
+          <Pressable style={styles.backupButton} onPress={handleExportFullBackup}>
+            <Text style={styles.backupButtonText}>Backup</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.grid}>
@@ -435,7 +439,7 @@ export default function ReportsScreen() {
         </View>
       </View>
 
-      <View style={styles.section}>
+      <View style={styles.highlightSection}>
         <Text style={styles.sectionTitle}>Average Order Value</Text>
         <Text style={styles.sectionValue}>
           {formatRM(report.summary.averageOrderValue)}
@@ -532,11 +536,15 @@ export default function ReportsScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#f7f7f7",
+    backgroundColor: UI.colors.canvas,
   },
   content: {
+    width: "100%",
+    maxWidth: 760,
+    alignSelf: "center",
     padding: 20,
-    paddingBottom: 40,
+    paddingTop: 28,
+    paddingBottom: 48,
   },
   center: {
     flex: 1,
@@ -561,86 +569,107 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   title: {
-    fontSize: 28,
+    color: UI.colors.ink,
+    fontSize: 30,
     fontWeight: "800",
-    marginBottom: 4,
+    letterSpacing: -0.7,
   },
   subtitle: {
     fontSize: 14,
-    color: "#666",
-    marginBottom: 16,
+    color: UI.colors.inkMuted,
+    marginTop: 4,
   },
+  pageHeader: { marginBottom: 22 },
+  eyebrow: { color: UI.colors.primary, fontSize: 11, fontWeight: "800", letterSpacing: 1.5, marginBottom: 5 },
   monthControls: {
     flexDirection: "row",
+    alignItems: "center",
     gap: 10,
     marginBottom: 16,
+    backgroundColor: UI.colors.ink,
+    borderRadius: UI.radius.large,
+    padding: 10,
+    ...UI.shadow,
   },
   monthButton: {
-    flex: 1,
-    backgroundColor: "#111",
-    borderRadius: 10,
-    paddingVertical: 12,
+    width: 44,
+    height: 44,
+    backgroundColor: "#FFFFFF14",
+    borderRadius: 13,
     alignItems: "center",
+    justifyContent: "center",
   },
   monthButtonText: {
     color: "#fff",
-    fontSize: 14,
-    fontWeight: "800",
+    fontSize: 20,
+    fontWeight: "600",
   },
+  monthCurrent: { flex: 1, alignItems: "center" },
+  monthLabel: { color: "#fff", fontSize: 17, fontWeight: "700" },
+  yearLabel: { color: "#98A2B3", fontSize: 12, marginTop: 2 },
+  exportPanel: { backgroundColor: UI.colors.surface, borderWidth: 1, borderColor: UI.colors.border, borderRadius: UI.radius.large, padding: 14, marginBottom: 16, ...UI.shadow },
+  exportPanelTitle: { color: UI.colors.inkMuted, fontSize: 10, fontWeight: "800", letterSpacing: 1, marginBottom: 10 },
+  exportActions: { flexDirection: "row", gap: 8 },
   grid: {
     gap: 12,
   },
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
+    backgroundColor: UI.colors.surface,
+    borderRadius: UI.radius.large,
     padding: 18,
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: UI.colors.border,
+    ...UI.shadow,
   },
   cardLabel: {
     fontSize: 14,
-    color: "#666",
+    color: UI.colors.inkMuted,
     marginBottom: 6,
   },
   cardValue: {
     fontSize: 24,
-    fontWeight: "900",
+    color: UI.colors.ink,
+    fontWeight: "800",
   },
   positiveValue: {
     fontSize: 24,
-    fontWeight: "900",
-    color: "green",
+    fontWeight: "800",
+    color: UI.colors.success,
   },
   negativeValue: {
     fontSize: 24,
-    fontWeight: "900",
-    color: "red",
+    fontWeight: "800",
+    color: UI.colors.danger,
   },
   section: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
+    backgroundColor: UI.colors.surface,
+    borderRadius: UI.radius.large,
     padding: 18,
     marginTop: 16,
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: UI.colors.border,
+    ...UI.shadow,
   },
+  highlightSection: { backgroundColor: UI.colors.primarySoft, borderRadius: UI.radius.large, padding: 20, marginTop: 16, borderWidth: 1, borderColor: "#FBC5CF" },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: "800",
+    color: UI.colors.ink,
+    fontWeight: "700",
     marginBottom: 12,
   },
   sectionValue: {
     fontSize: 22,
-    fontWeight: "900",
+    color: UI.colors.primary,
+    fontWeight: "800",
   },
   emptyText: {
     fontSize: 14,
-    color: "#777",
+    color: UI.colors.inkMuted,
   },
   listItem: {
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: "#eee",
+    borderTopColor: UI.colors.border,
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 12,
@@ -650,65 +679,70 @@ const styles = StyleSheet.create({
   },
   itemTitle: {
     fontSize: 15,
-    fontWeight: "800",
+    color: UI.colors.ink,
+    fontWeight: "700",
   },
   itemSubtitle: {
     marginTop: 3,
     fontSize: 13,
-    color: "#666",
+    color: UI.colors.inkMuted,
   },
   rightBox: {
     alignItems: "flex-end",
   },
   moneyText: {
     fontSize: 14,
-    fontWeight: "900",
+    color: UI.colors.ink,
+    fontWeight: "800",
   },
   smallProfitText: {
     marginTop: 4,
     fontSize: 12,
     fontWeight: "700",
-    color: "green",
+    color: UI.colors.success,
   },
   smallLossText: {
     marginTop: 4,
     fontSize: 12,
     fontWeight: "700",
-    color: "red",
+    color: UI.colors.danger,
   },
   exportButton: {
-    backgroundColor: "#111",
-    borderRadius: 10,
-    padding: 12,
+    flex: 1,
+    backgroundColor: UI.colors.primary,
+    borderRadius: UI.radius.small,
+    paddingVertical: 11,
     alignItems: "center",
-    marginBottom: 16,
   },
   exportButtonText: {
     color: "#fff",
-    fontWeight: "900",
+    fontSize: 12,
+    fontWeight: "700",
   },
   secondaryExportButton: {
-    backgroundColor: "#fff",
+    flex: 1,
+    backgroundColor: UI.colors.surfaceMuted,
     borderWidth: 1,
-    borderColor: "#111",
-    borderRadius: 10,
-    padding: 12,
+    borderColor: UI.colors.border,
+    borderRadius: UI.radius.small,
+    paddingVertical: 11,
     alignItems: "center",
-    marginBottom: 16,
   },
   secondaryExportButtonText: {
-    color: "#111",
-    fontWeight: "900",
+    color: UI.colors.ink,
+    fontSize: 12,
+    fontWeight: "700",
   },
   backupButton: {
-    backgroundColor: "#2563eb",
-    borderRadius: 10,
-    padding: 12,
+    flex: 1,
+    backgroundColor: UI.colors.ink,
+    borderRadius: UI.radius.small,
+    paddingVertical: 11,
     alignItems: "center",
-    marginBottom: 16,
   },
   backupButtonText: {
     color: "#fff",
-    fontWeight: "900",
+    fontSize: 12,
+    fontWeight: "700",
   },
 });
