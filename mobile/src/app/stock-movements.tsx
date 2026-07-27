@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -13,6 +13,7 @@ import {
   getStockMovements,
   StockMovement,
 } from "../api/stockMovements";
+import { FloatingBackToTop } from "../components/FloatingBackToTop";
 
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);
@@ -42,6 +43,8 @@ export default function StockMovementsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   const loadMovements = async () => {
     try {
@@ -91,9 +94,15 @@ export default function StockMovementsScreen() {
   }
 
   return (
+    <View style={styles.screenShell}>
     <ScrollView
+      ref={scrollRef}
       style={styles.screen}
       contentContainerStyle={styles.content}
+      onScroll={(event) =>
+        setShowBackToTop(event.nativeEvent.contentOffset.y > 240)
+      }
+      scrollEventThrottle={16}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
@@ -174,10 +183,16 @@ export default function StockMovementsScreen() {
         })
       )}
     </ScrollView>
+    <FloatingBackToTop
+      visible={showBackToTop}
+      onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+    />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screenShell: { flex: 1, backgroundColor: "#f7f7f7" },
   screen: {
     flex: 1,
     backgroundColor: "#f7f7f7",

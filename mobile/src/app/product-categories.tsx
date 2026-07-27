@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -17,6 +17,7 @@ import {
   getProductCategories,
   ProductCategory,
 } from "../api/productCategories";
+import { FloatingBackToTop } from "../components/FloatingBackToTop";
 
 export default function ProductCategoriesScreen() {
   const [categories, setCategories] = useState<ProductCategory[]>([]);
@@ -26,6 +27,8 @@ export default function ProductCategoriesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   const loadCategories = async () => {
     try {
@@ -91,8 +94,14 @@ export default function ProductCategoriesScreen() {
   }
 
   return (
+    <View style={styles.screenShell}>
     <ScrollView
+      ref={scrollRef}
       contentContainerStyle={styles.container}
+      onScroll={(event) =>
+        setShowBackToTop(event.nativeEvent.contentOffset.y > 240)
+      }
+      scrollEventThrottle={16}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
@@ -170,10 +179,16 @@ export default function ProductCategoriesScreen() {
         ))
       )}
     </ScrollView>
+    <FloatingBackToTop
+      visible={showBackToTop}
+      onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+    />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screenShell: { flex: 1, backgroundColor: "#f6f6f6" },
   container: {
     padding: 20,
     backgroundColor: "#f6f6f6",

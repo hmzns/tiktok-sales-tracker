@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -15,6 +15,7 @@ import {
   adjustStock,
   AdjustStockInput,
 } from "../api/stockMovements";
+import { FloatingBackToTop } from "../components/FloatingBackToTop";
 
 type ManualStockType = AdjustStockInput["type"];
 
@@ -46,6 +47,8 @@ const movementTypes: {
 ];
 
 export default function AdjustStockScreen() {
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(
     null
@@ -124,7 +127,16 @@ export default function AdjustStockScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <View style={styles.screenShell}>
+    <ScrollView
+      ref={scrollRef}
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      onScroll={(event) =>
+        setShowBackToTop(event.nativeEvent.contentOffset.y > 240)
+      }
+      scrollEventThrottle={16}
+    >
       <Text style={styles.title}>Adjust Stock</Text>
       <Text style={styles.subtitle}>
         Restock products or record damaged stock.
@@ -265,10 +277,16 @@ export default function AdjustStockScreen() {
         </Pressable>
       </View>
     </ScrollView>
+    <FloatingBackToTop
+      visible={showBackToTop}
+      onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+    />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screenShell: { flex: 1, backgroundColor: "#f7f7f7" },
   screen: {
     flex: 1,
     backgroundColor: "#f7f7f7",

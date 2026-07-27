@@ -196,6 +196,10 @@ export default function EditExpenseScreen() {
           {saving ? "Saving..." : "Save Changes"}
         </Text>
       </Pressable>
+
+      <Pressable style={styles.cancelButton} onPress={() => router.back()}>
+        <Text style={styles.cancelButtonText}>Cancel</Text>
+      </Pressable>
     </ScrollView>
   );
 }
@@ -282,5 +286,17 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "900",
     fontSize: 15,
+  },
+  cancelButton: {
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+  cancelButtonText: {
+    fontSize: 15,
+    fontWeight: "800",
   },
 });

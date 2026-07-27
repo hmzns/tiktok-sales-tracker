@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +13,7 @@ import { router } from "expo-router";
 import { createOrder } from "../api/orders";
 import { getProducts, Product } from "../api/products";
 import { FieldError } from "../components/FieldError";
+import { FloatingBackToTop } from "../components/FloatingBackToTop";
 import { showSuccessMessage } from "../utils/showSuccessMessage";
 
 type SelectedOrderItem = {
@@ -25,6 +26,8 @@ type SelectedOrderItem = {
 };
 
 export default function AddOrderScreen() {
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProductId, setSelectedProductId] = useState("");
   const [quantity, setQuantity] = useState("1");
@@ -254,7 +257,15 @@ export default function AddOrderScreen() {
   }, []);
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <View style={styles.screenShell}>
+    <ScrollView
+      ref={scrollRef}
+      contentContainerStyle={styles.container}
+      onScroll={(event) =>
+        setShowBackToTop(event.nativeEvent.contentOffset.y > 240)
+      }
+      scrollEventThrottle={16}
+    >
       <Text style={styles.title}>Create Order</Text>
       <Text style={styles.subtitle}>
         Add one or more products into this order.
@@ -446,11 +457,21 @@ export default function AddOrderScreen() {
           {saving ? "Creating..." : "Create Order"}
         </Text>
       </Pressable>
+
+      <Pressable style={styles.cancelButton} onPress={() => router.back()}>
+        <Text style={styles.cancelButtonText}>Cancel</Text>
+      </Pressable>
     </ScrollView>
+    <FloatingBackToTop
+      visible={showBackToTop}
+      onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+    />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screenShell: { flex: 1, backgroundColor: "#f6f6f6" },
   container: {
     padding: 20,
     backgroundColor: "#f6f6f6",
@@ -636,7 +657,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 14,
     alignItems: "center",
-    marginBottom: 20,
   },
   disabledButton: {
     opacity: 0.6,
@@ -645,5 +665,18 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "900",
     fontSize: 15,
+  },
+  cancelButton: {
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 10,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+  cancelButtonText: {
+    fontSize: 15,
+    fontWeight: "800",
   },
 });
