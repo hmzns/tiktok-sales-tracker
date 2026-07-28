@@ -24,6 +24,10 @@ type CreateOrderInput = {
   }[];
 };
 
+const publicOrderOmit = {
+  rawImportData: true,
+} satisfies Prisma.SalesOrderOmit;
+
 // POST /orders
 export const createOrder = async (data: CreateOrderInput) => {
   const discount = data.discount ?? 0;
@@ -90,6 +94,9 @@ export const createOrder = async (data: CreateOrderInput) => {
       data: {
         orderNumber: data.orderNumber,
         tiktokOrderId: data.tiktokOrderId,
+        source: "MANUAL",
+        importStatus: "READY",
+        stockProcessed: true,
         platform: data.platform ?? "MANUAL",
         status: data.status ?? "PENDING",
         customerName: data.customerName,
@@ -112,6 +119,7 @@ export const createOrder = async (data: CreateOrderInput) => {
           },
         },
       },
+      omit: publicOrderOmit,
     });
 
     for (const item of orderItemsData) {
@@ -215,6 +223,7 @@ export const getAllOrders = async (filter: OrderFilter = {}) => {
           },
         },
       },
+      omit: publicOrderOmit,
     }),
     prisma.salesOrder.count({
       where,
@@ -247,6 +256,7 @@ export const getOrderById = async (id: string) => {
         },
       },
     },
+    omit: publicOrderOmit,
   });
 };
 
@@ -267,6 +277,7 @@ export const updateOrderStatus = async (
     include: {
       items: true,
     },
+    omit: publicOrderOmit,
   });
 
   if (!order) {
@@ -329,6 +340,7 @@ export const updateOrderStatus = async (
           },
         },
       },
+      omit: publicOrderOmit,
     });
 
     return updatedOrder;

@@ -24,6 +24,17 @@ enum SalesOrderStatus {
   REFUNDED
 }
 
+enum OrderSource {
+  MANUAL
+  TIKTOK
+}
+
+enum ImportStatus {
+  NEEDS_ITEMS
+  READY
+  IMPORT_FAILED
+}
+
 enum ExpenseCategory {
   PACKAGING
   ADS
@@ -71,9 +82,14 @@ model Product {
 }
 
 model SalesOrder {
-  id            String  @id @default(cuid())
-  orderNumber   String? @unique
-  tiktokOrderId String? @unique
+  id             String       @id @default(cuid())
+  orderNumber    String?      @unique
+  tiktokOrderId  String?      @unique
+  source         OrderSource  @default(MANUAL)
+  importStatus   ImportStatus @default(READY)
+  importedAt     DateTime?
+  rawImportData  Json?
+  stockProcessed Boolean      @default(false)
 
   platform SalesPlatform    @default(MANUAL)
   status   SalesOrderStatus @default(PENDING)
