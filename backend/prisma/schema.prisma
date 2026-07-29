@@ -110,6 +110,29 @@ model SalesOrder {
   items OrderItem[]
 }
 
+model TikTokConnection {
+  id                    String    @id @default(cuid())
+  merchantId            String    @unique
+  encryptedAccessToken  String
+  encryptedRefreshToken String
+  accessTokenExpiresAt  DateTime
+  refreshTokenExpiresAt DateTime
+  connectedAt           DateTime  @default(now())
+  refreshedAt           DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model TikTokOAuthState {
+  id        String    @id @default(cuid())
+  stateHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([expiresAt])
+}
+
 model OrderItem {
   id String @id @default(cuid())
 

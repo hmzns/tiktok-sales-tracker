@@ -7,7 +7,9 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ) => {
-  console.error(`[${new Date().toISOString()}] Error:`, {
+  console.error(`[${new Date().toISOString()}] Request error:`, {
+    method: req.method,
+    path: req.path,
     message: error.message,
     stack: process.env.NODE_ENV === "production" ? undefined : error.stack,
   });
@@ -18,8 +20,6 @@ export const errorHandler = (
       message: error.message,
     });
   }
-
-  console.error(error);
 
   return res.status(500).json({
     success: false,

@@ -11,7 +11,7 @@ export const requestLogger = (
     const duration = Date.now() - start;
 
     console.log(
-      `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms`
+      `[${new Date().toISOString()}] ${req.method} ${req.path} ${res.statusCode} - ${duration}ms`
     );
   });
 

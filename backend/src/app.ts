@@ -9,6 +9,7 @@ import productCategoriesRouter from "./routes/productCategories";
 import stockMovementsRouter from "./routes/stockMovements";
 import reportsRouter from "./routes/reports";
 import apiDocsRouter from "./routes/apiDocs";
+import tiktokShopRouter from "./routes/tiktokShop";
 import { apiRateLimiter } from "./middleware/rateLimiter";
 import { apiKeyAuth } from "./middleware/apiKeyAuth";
 import { requestLogger } from "./middleware/requestLogger";
@@ -59,6 +60,7 @@ app.use("/product-categories", productCategoriesRouter);
 app.use("/stock-movements", stockMovementsRouter);
 app.use("/reports", reportsRouter);
 app.use("/api-docs", apiDocsRouter);
+app.use("/tiktok-shop", tiktokShopRouter);
 
 app.use(notFound);
 app.use(errorHandler);

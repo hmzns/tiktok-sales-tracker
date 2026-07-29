@@ -5,7 +5,15 @@ export const apiKeyAuth = (
   res: Response,
   next: NextFunction
 ) => {
-  if (req.method === "OPTIONS" || req.path === "/health") {
+  const isTikTokCallback =
+    req.method === "GET" &&
+    req.path === "/tiktok-shop/callback";
+
+  if (
+    req.method === "OPTIONS" ||
+    req.path === "/health" ||
+    isTikTokCallback
+  ) {
     return next();
   }
 
