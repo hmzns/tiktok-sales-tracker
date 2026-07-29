@@ -4,6 +4,7 @@ import {
   createTikTokShopAuthorization,
   getTikTokConnectionStatus,
   refreshTikTokShopToken,
+  TikTokCallbackError,
 } from "../services/tiktokShop.service";
 
 export const connect = async (req: Request, res: Response) => {
@@ -43,7 +44,9 @@ const redirectOrRespond = (
 
 export const callback = async (req: Request, res: Response) => {
   const state = getSingleQueryValue(req.query.state);
-  const code = getSingleQueryValue(req.query.code);
+  const code =
+    getSingleQueryValue(req.query.code) ??
+    getSingleQueryValue(req.query.auth_code);
   const tiktokError = getSingleQueryValue(req.query.error);
 
   try {
@@ -53,7 +56,13 @@ export const callback = async (req: Request, res: Response) => {
       process.env.TIKTOK_SHOP_SUCCESS_REDIRECT_URL,
       true
     );
-  } catch {
+  } catch (error) {
+    const category =
+      error instanceof TikTokCallbackError
+        ? error.category
+        : "tiktok_callback_storage_failed";
+    console.error(category);
+
     return redirectOrRespond(
       res,
       process.env.TIKTOK_SHOP_FAILURE_REDIRECT_URL,

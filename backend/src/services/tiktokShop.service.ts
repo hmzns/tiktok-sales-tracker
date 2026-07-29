@@ -15,6 +15,22 @@ const REFRESH_BUFFER_MS = 10 * 60 * 1000;
 const STATE_LIFETIME_MS = 10 * 60 * 1000;
 const TOKEN_REQUEST_TIMEOUT_MS = 15_000;
 
+export type TikTokCallbackFailureCategory =
+  | "tiktok_callback_missing_code"
+  | "tiktok_callback_missing_state"
+  | "tiktok_callback_invalid_state"
+  | "tiktok_callback_expired_state"
+  | "tiktok_callback_provider_error"
+  | "tiktok_callback_token_exchange_failed"
+  | "tiktok_callback_storage_failed";
+
+export class TikTokCallbackError extends Error {
+  constructor(public readonly category: TikTokCallbackFailureCategory) {
+    super(category);
+    this.name = "TikTokCallbackError";
+  }
+}
+
 const tokenDataSchema = z.object({
   access_token: z.string().min(1),
   refresh_token: z.string().min(1),
@@ -187,21 +203,45 @@ const stateHash = (state: string) =>
 
 const validateAndConsumeState = async (state: string | undefined) => {
   if (!state) {
-    throw new AppError("TikTok Shop authorization state is missing", 400);
+    throw new TikTokCallbackError("tiktok_callback_missing_state");
   }
 
-  const now = new Date();
-  const result = await prisma.tikTokOAuthState.updateMany({
-    where: {
-      stateHash: stateHash(state),
-      usedAt: null,
-      expiresAt: { gt: now },
-    },
-    data: { usedAt: now },
-  });
+  try {
+    const now = new Date();
+    const hashedState = stateHash(state);
 
-  if (result.count !== 1) {
-    throw new AppError("TikTok Shop authorization state is invalid", 400);
+    await prisma.$transaction(async (transaction) => {
+      const storedState = await transaction.tikTokOAuthState.findUnique({
+        where: { stateHash: hashedState },
+        select: { expiresAt: true, usedAt: true },
+      });
+
+      if (!storedState || storedState.usedAt) {
+        throw new TikTokCallbackError("tiktok_callback_invalid_state");
+      }
+
+      if (storedState.expiresAt <= now) {
+        throw new TikTokCallbackError("tiktok_callback_expired_state");
+      }
+
+      const consumed = await transaction.tikTokOAuthState.updateMany({
+        where: {
+          stateHash: hashedState,
+          usedAt: null,
+          expiresAt: { gt: now },
+        },
+        data: { usedAt: now },
+      });
+
+      if (consumed.count !== 1) {
+        throw new TikTokCallbackError("tiktok_callback_invalid_state");
+      }
+    });
+  } catch (error) {
+    if (error instanceof TikTokCallbackError) {
+      throw error;
+    }
+    throw new TikTokCallbackError("tiktok_callback_storage_failed");
   }
 };
 
@@ -244,12 +284,16 @@ export const createTikTokShopAuthorization = async () => {
   const config = getTikTokConfig();
   const state = randomBytes(32).toString("base64url");
 
-  await prisma.tikTokOAuthState.create({
-    data: {
-      stateHash: stateHash(state),
-      expiresAt: new Date(Date.now() + STATE_LIFETIME_MS),
-    },
-  });
+  try {
+    await prisma.tikTokOAuthState.create({
+      data: {
+        stateHash: stateHash(state),
+        expiresAt: new Date(Date.now() + STATE_LIFETIME_MS),
+      },
+    });
+  } catch {
+    throw new AppError("TikTok Shop authorization could not be started", 500);
+  }
 
   const authorizationUrl = new URL(config.authorizationUrl);
   authorizationUrl.searchParams.set("state", state);
@@ -269,19 +313,32 @@ export const completeTikTokShopAuthorization = async ({
   await validateAndConsumeState(state);
 
   if (tiktokError) {
-    throw new AppError("TikTok Shop authorization was not approved", 400);
+    throw new TikTokCallbackError("tiktok_callback_provider_error");
   }
 
   if (!code || code === "null") {
-    throw new AppError("TikTok Shop authorization code is missing", 400);
+    throw new TikTokCallbackError("tiktok_callback_missing_code");
   }
 
-  const config = getTikTokConfig();
-  const tokenBundle = await requestTokenBundle(config, {
-    grantType: "authorized_code",
-    authorizationCode: code,
-  });
-  await storeTokenBundle(tokenBundle);
+  let tokenBundle: TokenBundle;
+
+  try {
+    const config = getTikTokConfig();
+    tokenBundle = await requestTokenBundle(config, {
+      grantType: "authorized_code",
+      authorizationCode: code,
+    });
+  } catch {
+    throw new TikTokCallbackError(
+      "tiktok_callback_token_exchange_failed"
+    );
+  }
+
+  try {
+    await storeTokenBundle(tokenBundle);
+  } catch {
+    throw new TikTokCallbackError("tiktok_callback_storage_failed");
+  }
 };
 
 export const refreshTikTokShopToken = async () => {
