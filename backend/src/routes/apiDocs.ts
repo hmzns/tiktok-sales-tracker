@@ -160,6 +160,28 @@ router.get("/", (req, res) => {
             query: ["year", "month"],
           },
         ],
+        tiktokShop: [
+          {
+            method: "POST",
+            path: "/tiktok-shop/connect",
+            description: "Start TikTok Shop seller authorization",
+          },
+          {
+            method: "GET",
+            path: "/tiktok-shop/status",
+            description: "Get safe TikTok Shop connection and shop status",
+          },
+          {
+            method: "POST",
+            path: "/tiktok-shop/refresh",
+            description: "Refresh the stored TikTok Shop tokens",
+          },
+          {
+            method: "POST",
+            path: "/tiktok-shop/shop/sync",
+            description: "Retrieve and save authorized TikTok Shop metadata",
+          },
+        ],
       },
     },
   });

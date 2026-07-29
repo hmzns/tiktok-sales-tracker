@@ -7,13 +7,17 @@ import {
   encryptSecret,
   isSecretEncryptionConfigured,
 } from "../utils/secretEncryption";
+import { generateTikTokShopSignature } from "../utils/tiktokShopSignature";
 
 const DEFAULT_TOKEN_URL = "https://auth.tiktok-shops.com/api/v2/token/get";
 const DEFAULT_REFRESH_URL =
   "https://auth.tiktok-shops.com/api/v2/token/refresh";
+const DEFAULT_API_BASE_URL = "https://open-api.tiktokglobalshop.com";
+const AUTHORIZED_SHOPS_PATH = "/authorization/202309/shops";
 const REFRESH_BUFFER_MS = 10 * 60 * 1000;
 const STATE_LIFETIME_MS = 10 * 60 * 1000;
 const TOKEN_REQUEST_TIMEOUT_MS = 15_000;
+const API_REQUEST_TIMEOUT_MS = 15_000;
 
 export type TikTokCallbackFailureCategory =
   | "tiktok_callback_missing_code"
@@ -45,12 +49,31 @@ const tokenResponseSchema = z.object({
   data: tokenDataSchema.optional(),
 });
 
+const authorizedShopSchema = z.object({
+  id: z.string().trim().min(1),
+  code: z.string().trim().min(1),
+  name: z.string().trim().min(1),
+  cipher: z.string().trim().min(1),
+  region: z.string().trim().min(1),
+});
+
+const authorizedShopsResponseSchema = z.object({
+  code: z.coerce.number().int(),
+  message: z.string().optional(),
+  data: z
+    .object({
+      shops: z.array(authorizedShopSchema),
+    })
+    .optional(),
+});
+
 type TikTokConfig = {
   appKey: string;
   appSecret: string;
   authorizationUrl: string;
   tokenUrl: string;
   refreshUrl: string;
+  apiBaseUrl: string;
 };
 
 type TokenBundle = {
@@ -60,6 +83,8 @@ type TokenBundle = {
   accessTokenExpiresAt: Date;
   refreshTokenExpiresAt: Date;
 };
+
+export type AuthorizedTikTokShop = z.infer<typeof authorizedShopSchema>;
 
 const requiredEnvironmentVariables = [
   "TIKTOK_SHOP_APP_KEY",
@@ -103,6 +128,10 @@ const getTikTokConfig = (): TikTokConfig => {
     process.env.TIKTOK_SHOP_REFRESH_URL || DEFAULT_REFRESH_URL,
     "TIKTOK_SHOP_REFRESH_URL"
   ).toString();
+  const apiBaseUrl = requireHttpsUrl(
+    process.env.TIKTOK_SHOP_API_BASE_URL || DEFAULT_API_BASE_URL,
+    "TIKTOK_SHOP_API_BASE_URL"
+  ).toString();
 
   return {
     appKey: process.env.TIKTOK_SHOP_APP_KEY as string,
@@ -110,6 +139,7 @@ const getTikTokConfig = (): TikTokConfig => {
     authorizationUrl,
     tokenUrl,
     refreshUrl,
+    apiBaseUrl,
   };
 };
 
@@ -249,11 +279,28 @@ const toSafeConnection = (connection: {
   merchantId: string;
   accessTokenExpiresAt: Date;
   refreshTokenExpiresAt: Date;
+  shopId: string | null;
+  shopCode: string | null;
+  shopName: string | null;
+  shopCipher: string | null;
+  shopRegion: string | null;
 }) => ({
   connected: true as const,
   merchantId: connection.merchantId,
   accessTokenExpiresAt: connection.accessTokenExpiresAt,
   refreshTokenExpiresAt: connection.refreshTokenExpiresAt,
+  shopConfigured: Boolean(
+    connection.shopId &&
+      connection.shopCode &&
+      connection.shopName &&
+      connection.shopCipher &&
+      connection.shopRegion
+  ),
+  shopId: connection.shopId,
+  shopCode: connection.shopCode,
+  shopName: connection.shopName,
+  shopRegion: connection.shopRegion,
+  hasShopCipher: Boolean(connection.shopCipher),
 });
 
 const storeTokenBundle = async (tokenBundle: TokenBundle) => {
@@ -409,6 +456,127 @@ export const getValidTikTokAccessToken = async () => {
   return decryptSecret(connections[0].encryptedAccessToken);
 };
 
+export const getAuthorizedShops = async (): Promise<
+  AuthorizedTikTokShop[]
+> => {
+  const config = getTikTokConfig();
+  const accessToken = await getValidTikTokAccessToken();
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const queryParams = {
+    app_key: config.appKey,
+    timestamp,
+  };
+  const sign = generateTikTokShopSignature({
+    appSecret: config.appSecret,
+    method: "GET",
+    path: AUTHORIZED_SHOPS_PATH,
+    queryParams,
+  });
+  const url = new URL(AUTHORIZED_SHOPS_PATH, config.apiBaseUrl);
+
+  url.searchParams.set("app_key", config.appKey);
+  url.searchParams.set("timestamp", timestamp);
+  url.searchParams.set("sign", sign);
+
+  let response: Response;
+
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "content-type": "application/json",
+        "x-tts-access-token": accessToken,
+      },
+      signal: AbortSignal.timeout(API_REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    throw new AppError("Unable to reach TikTok Shop API", 502);
+  }
+
+  let responseData: unknown;
+
+  try {
+    responseData = await response.json();
+  } catch {
+    throw new AppError(
+      "TikTok Shop returned an invalid authorized shops response",
+      502
+    );
+  }
+
+  const parsed = authorizedShopsResponseSchema.safeParse(responseData);
+
+  if (!parsed.success) {
+    throw new AppError(
+      "TikTok Shop returned an invalid authorized shops response",
+      502
+    );
+  }
+
+  if (!response.ok || parsed.data.code !== 0 || !parsed.data.data) {
+    throw new AppError(
+      "TikTok Shop rejected the authorized shops request",
+      502
+    );
+  }
+
+  return parsed.data.data.shops;
+};
+
+export const syncAuthorizedTikTokShop = async () => {
+  const shops = await getAuthorizedShops();
+
+  if (shops.length === 0) {
+    throw new AppError(
+      "TikTok Shop returned no usable authorized shops",
+      409
+    );
+  }
+
+  if (shops.length > 1) {
+    throw new AppError(
+      "Multiple authorized TikTok Shops were returned; this application requires exactly one shop",
+      409
+    );
+  }
+
+  const connections = await prisma.tikTokConnection.findMany({
+    select: { id: true },
+    orderBy: { connectedAt: "desc" },
+    take: 2,
+  });
+
+  if (connections.length !== 1) {
+    throw new AppError("A single TikTok Shop connection is required", 409);
+  }
+
+  const shop = shops[0];
+
+  try {
+    await prisma.tikTokConnection.update({
+      where: { id: connections[0].id },
+      data: {
+        shopId: shop.id,
+        shopCode: shop.code,
+        shopName: shop.name,
+        shopCipher: shop.cipher,
+        shopRegion: shop.region,
+      },
+    });
+  } catch {
+    throw new AppError("TikTok Shop metadata could not be saved", 500);
+  }
+
+  return {
+    connected: true as const,
+    shopId: shop.id,
+    shopCode: shop.code,
+    shopName: shop.name,
+    shopRegion: shop.region,
+    hasShopCipher: true,
+  };
+};
+
 export const getTikTokConnectionStatus = async () => {
   const configured = isTikTokConfigured();
   const connections = await prisma.tikTokConnection.findMany({
@@ -416,19 +584,34 @@ export const getTikTokConnectionStatus = async () => {
       merchantId: true,
       accessTokenExpiresAt: true,
       refreshTokenExpiresAt: true,
+      shopId: true,
+      shopCode: true,
+      shopName: true,
+      shopCipher: true,
+      shopRegion: true,
     },
     orderBy: { connectedAt: "desc" },
   });
 
+  const safeConnections = connections.map((connection) => ({
+    ...toSafeConnection(connection),
+    needsRefresh:
+      connection.accessTokenExpiresAt.getTime() <=
+      Date.now() + REFRESH_BUFFER_MS,
+  }));
+  const singleConnection =
+    safeConnections.length === 1 ? safeConnections[0] : undefined;
+
   return {
     configured,
     connected: connections.length > 0,
+    shopConfigured: singleConnection?.shopConfigured ?? false,
+    shopId: singleConnection?.shopId ?? null,
+    shopCode: singleConnection?.shopCode ?? null,
+    shopName: singleConnection?.shopName ?? null,
+    shopRegion: singleConnection?.shopRegion ?? null,
+    hasShopCipher: singleConnection?.hasShopCipher ?? false,
     connectionCount: connections.length,
-    connections: connections.map((connection) => ({
-      ...toSafeConnection(connection),
-      needsRefresh:
-        connection.accessTokenExpiresAt.getTime() <=
-        Date.now() + REFRESH_BUFFER_MS,
-    })),
+    connections: safeConnections,
   };
 };

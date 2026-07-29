@@ -4,6 +4,7 @@ import {
   createTikTokShopAuthorization,
   getTikTokConnectionStatus,
   refreshTikTokShopToken,
+  syncAuthorizedTikTokShop,
   TikTokCallbackError,
 } from "../services/tiktokShop.service";
 
@@ -91,5 +92,14 @@ export const refresh = async (req: Request, res: Response) => {
   return res.json({
     success: true,
     ...connection,
+  });
+};
+
+export const syncShop = async (req: Request, res: Response) => {
+  const shop = await syncAuthorizedTikTokShop();
+
+  return res.json({
+    success: true,
+    ...shop,
   });
 };

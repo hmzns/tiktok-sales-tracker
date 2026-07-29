@@ -117,6 +117,11 @@ model TikTokConnection {
   encryptedRefreshToken String
   accessTokenExpiresAt  DateTime
   refreshTokenExpiresAt DateTime
+  shopId                String?
+  shopCode              String?
+  shopName              String?
+  shopCipher            String?
+  shopRegion            String?
   connectedAt           DateTime  @default(now())
   refreshedAt           DateTime?
   createdAt             DateTime  @default(now())
