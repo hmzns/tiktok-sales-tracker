@@ -76,6 +76,15 @@ type TikTokConfig = {
   apiBaseUrl: string;
 };
 
+export type TikTokOrderApiContext = Pick<
+  TikTokConfig,
+  "appKey" | "appSecret" | "apiBaseUrl"
+> & {
+  accessToken: string;
+  shopCipher: string;
+  shopId: string | null;
+};
+
 type TokenBundle = {
   merchantId: string;
   accessToken: string;
@@ -455,6 +464,42 @@ export const getValidTikTokAccessToken = async () => {
 
   return decryptSecret(connections[0].encryptedAccessToken);
 };
+
+export const getTikTokOrderApiContext =
+  async (): Promise<TikTokOrderApiContext> => {
+    const config = getTikTokConfig();
+    const connections = await prisma.tikTokConnection.findMany({
+      select: {
+        shopCipher: true,
+        shopId: true,
+      },
+      orderBy: { connectedAt: "desc" },
+      take: 2,
+    });
+
+    if (connections.length !== 1) {
+      throw new AppError("A single TikTok Shop connection is required", 409);
+    }
+
+    const shopCipher = connections[0].shopCipher?.trim();
+    if (!shopCipher) {
+      throw new AppError(
+        "TikTok Shop metadata must be synchronized before orders",
+        409
+      );
+    }
+
+    const accessToken = await getValidTikTokAccessToken();
+
+    return {
+      appKey: config.appKey,
+      appSecret: config.appSecret,
+      apiBaseUrl: config.apiBaseUrl,
+      accessToken,
+      shopCipher,
+      shopId: connections[0].shopId,
+    };
+  };
 
 export const getAuthorizedShops = async (): Promise<
   AuthorizedTikTokShop[]

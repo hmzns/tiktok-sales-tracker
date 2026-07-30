@@ -181,6 +181,15 @@ router.get("/", (req, res) => {
             path: "/tiktok-shop/shop/sync",
             description: "Retrieve and save authorized TikTok Shop metadata",
           },
+          {
+            method: "POST",
+            path: "/tiktok-shop/orders/sync",
+            description:
+              "Import basic TikTok Shop orders from the last 1 to 30 days",
+            body: {
+              days: "optional integer; defaults to 7",
+            },
+          },
         ],
       },
     },

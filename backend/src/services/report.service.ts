@@ -31,7 +31,7 @@ export const getMonthlySalesReport = async (
     filter.month
   );
 
-  // Financial reports recognize only orders that remain valid sales.
+  // Financial reports recognize only item-confirmed orders that remain valid.
   const orders = await prisma.salesOrder.findMany({
     where: {
       createdAt: {
@@ -41,6 +41,7 @@ export const getMonthlySalesReport = async (
       status: {
         notIn: ["CANCELLED", "REFUNDED"],
       },
+      importStatus: "READY",
     },
     orderBy: {
       createdAt: "asc",

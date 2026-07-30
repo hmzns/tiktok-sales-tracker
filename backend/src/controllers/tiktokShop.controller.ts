@@ -7,6 +7,7 @@ import {
   syncAuthorizedTikTokShop,
   TikTokCallbackError,
 } from "../services/tiktokShop.service";
+import { syncTikTokOrders } from "../services/tiktokOrder.service";
 
 export const connect = async (req: Request, res: Response) => {
   const authorization = await createTikTokShopAuthorization();
@@ -101,5 +102,14 @@ export const syncShop = async (req: Request, res: Response) => {
   return res.json({
     success: true,
     ...shop,
+  });
+};
+
+export const syncOrders = async (req: Request, res: Response) => {
+  const summary = await syncTikTokOrders(req.body.days);
+
+  return res.json({
+    success: true,
+    data: summary,
   });
 };

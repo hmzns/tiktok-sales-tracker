@@ -29,7 +29,7 @@ export const getDashboardSummary = async (filter: DashboardFilter) => {
     filter.month
   );
 
-  // Cancelled and refunded orders no longer contribute to sales metrics.
+  // Only item-confirmed, non-reversed orders contribute to sales metrics.
   const orders = await prisma.salesOrder.findMany({
     where: {
       createdAt: {
@@ -39,6 +39,7 @@ export const getDashboardSummary = async (filter: DashboardFilter) => {
       status: {
         notIn: ["CANCELLED", "REFUNDED"],
       },
+      importStatus: "READY",
     },
     include: {
       items: {
