@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState } from "react";
+import { isAxiosError } from "axios";
 import {
   Alert,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -13,6 +15,7 @@ import {
   getOrders,
   OrderStatus,
   SalesOrder,
+  syncTikTokOrders,
   updateOrderStatus,
 } from "../../api/orders";
 import { EmptyState } from "../../components/EmptyState";
@@ -22,6 +25,7 @@ import { router, useFocusEffect } from "expo-router";
 import { UI } from "../../constants/ui";
 import { getDashboardSummary } from "../../api/dashboard";
 import { FloatingBackToTop } from "../../components/FloatingBackToTop";
+import { showSuccessMessage } from "../../utils/showSuccessMessage";
 
 const formatRM = (value: number) => {
   return `RM ${value.toFixed(2)}`;
@@ -60,11 +64,67 @@ const STATUS_FILTERS: (OrderStatus | "ALL")[] = [
   "REFUNDED",
 ];
 
+const getTikTokSyncErrorMessage = (error: unknown) => {
+  if (!isAxiosError(error)) {
+    return "Unable to sync TikTok orders. Please try again.";
+  }
+
+  if (!error.response) {
+    return "Network request failed. Check your connection and try again.";
+  }
+
+  const responseData = error.response.data;
+  const backendMessage =
+    responseData &&
+    typeof responseData === "object" &&
+    "message" in responseData &&
+    typeof responseData.message === "string"
+      ? responseData.message
+      : "";
+
+  if (
+    /not connected|single TikTok Shop connection|metadata must be synchronized/i.test(
+      backendMessage
+    )
+  ) {
+    return "TikTok Shop is not connected. Connect your shop and try again.";
+  }
+
+  if (
+    /refresh token|token service|token request|token expiry|stored TikTok token|access token/i.test(
+      backendMessage
+    )
+  ) {
+    return "TikTok Shop access token refresh failed. Reconnect your shop and try again.";
+  }
+
+  if (
+    error.response.status === 502 ||
+    /unable to reach TikTok Shop|rejected the order-list request|invalid order-list response/i.test(
+      backendMessage
+    )
+  ) {
+    return "TikTok Shop is temporarily unavailable. Please try again later.";
+  }
+
+  return "Unable to sync TikTok orders. Please try again.";
+};
+
+const showTikTokSyncError = (message: string) => {
+  if (Platform.OS === "web") {
+    window.alert(message);
+    return;
+  }
+
+  Alert.alert("TikTok sync failed", message);
+};
+
 export default function OrdersScreen() {
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "ALL">("ALL");
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +132,7 @@ export default function OrdersScreen() {
   const [profitSort, setProfitSort] = useState<"recent" | "highest" | "lowest">("recent");
   const [showBackToTop, setShowBackToTop] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const syncInFlightRef = useRef(false);
 
   const loadOrders = async () => {
     try {
@@ -115,6 +176,39 @@ export default function OrdersScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     loadOrders();
+  };
+
+  const handleTikTokSync = async () => {
+    if (syncInFlightRef.current) {
+      return;
+    }
+
+    syncInFlightRef.current = true;
+    setSyncing(true);
+
+    try {
+      const result = await syncTikTokOrders(7);
+
+      if (!result.success || !result.data) {
+        throw new Error("Unexpected TikTok sync response");
+      }
+
+      await loadOrders();
+
+      showSuccessMessage(
+        [
+          "TikTok sync completed.",
+          `New orders: ${result.data.created}`,
+          `Existing orders: ${result.data.existing}`,
+          `Failed: ${result.data.failed}`,
+        ].join("\n")
+      );
+    } catch (error) {
+      showTikTokSyncError(getTikTokSyncErrorMessage(error));
+    } finally {
+      syncInFlightRef.current = false;
+      setSyncing(false);
+    }
   };
 
   const displayedOrders = [...orders].sort((a, b) => {
@@ -182,6 +276,16 @@ export default function OrdersScreen() {
           <Text style={styles.headerAddButtonText}>+ Add order</Text>
         </Pressable>
       </View>
+
+      <Pressable
+        style={[styles.syncButton, syncing && styles.disabledButton]}
+        onPress={handleTikTokSync}
+        disabled={syncing}
+      >
+        <Text style={styles.syncButtonText}>
+          {syncing ? "Syncing..." : "Sync TikTok Orders"}
+        </Text>
+      </Pressable>
 
       <View style={styles.summaryCard}>
         <View>
@@ -401,6 +505,9 @@ const styles = StyleSheet.create({
   eyebrow: { color: UI.colors.primary, fontSize: 11, fontWeight: "800", letterSpacing: 1.5, marginBottom: 5 },
   headerAddButton: { minHeight: 44, alignItems: "center", justifyContent: "center", backgroundColor: UI.colors.primary, borderRadius: UI.radius.small, paddingHorizontal: 16, ...UI.shadow },
   headerAddButtonText: { color: "#fff", fontSize: 13, fontWeight: "800" },
+  syncButton: { minHeight: 44, alignItems: "center", justifyContent: "center", backgroundColor: UI.colors.surface, borderWidth: 1, borderColor: UI.colors.border, borderRadius: UI.radius.small, marginBottom: 16 },
+  syncButtonText: { color: UI.colors.ink, fontSize: 12, fontWeight: "700" },
+  disabledButton: { opacity: 0.6 },
   summaryCard: { minHeight: 104, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, borderRadius: UI.radius.large, padding: 20, marginBottom: 16, backgroundColor: UI.colors.ink, ...UI.shadow },
   summaryLabel: { color: "#D0D5DD", fontSize: 13, marginBottom: 7 },
   summaryValue: { color: "#fff", fontSize: 30, fontWeight: "800" },

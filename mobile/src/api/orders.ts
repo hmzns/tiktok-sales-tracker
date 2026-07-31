@@ -56,6 +56,16 @@ export type OrdersResponse = {
   };
 };
 
+export type TikTokOrderSyncResponse = {
+  success: boolean;
+  data: {
+    fetched: number;
+    created: number;
+    existing: number;
+    failed: number;
+  };
+};
+
 export type CreateOrderInput = {
   orderNumber?: string;
   platform?: "MANUAL" | "TIKTOK_SHOP" | "SHOPEE" | "LAZADA";
@@ -129,6 +139,17 @@ export const getOrderById = async (
 ): Promise<SalesOrder> => {
   const response = await apiClient.get(`/orders/${orderId}`);
   return response.data.data;
+};
+
+export const syncTikTokOrders = async (
+  days = 7
+): Promise<TikTokOrderSyncResponse> => {
+  const response = await apiClient.post<TikTokOrderSyncResponse>(
+    "/tiktok-shop/orders/sync",
+    { days }
+  );
+
+  return response.data;
 };
 
 export const completeImportedOrder = async (
