@@ -96,6 +96,16 @@ router.get("/", (req, res) => {
             description: "Create order",
           },
           {
+            method: "POST",
+            path: "/orders/:id/complete-import",
+            description:
+              "Add local items and complete an imported TikTok order",
+            body: {
+              items:
+                "non-empty array of { productId, quantity, optional sellPrice }",
+            },
+          },
+          {
             method: "PATCH",
             path: "/orders/:id/status",
             description: "Update order status",

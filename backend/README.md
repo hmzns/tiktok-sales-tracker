@@ -142,6 +142,7 @@ DELETE /product-categories/:id
 GET    /orders
 GET    /orders/:id
 POST   /orders
+POST   /orders/:id/complete-import
 PATCH  /orders/:id/status
 ```
 

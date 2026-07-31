@@ -58,3 +58,46 @@ export const updateOrderStatusSchema = z.object({
     "REFUNDED",
   ]),
 });
+
+export const completeImportedOrderSchema = z
+  .object({
+    items: z
+      .array(
+        z.object({
+          productId: z.string().trim().min(1, "Product ID is required"),
+          quantity: z.coerce
+            .number()
+            .int("Quantity must be a whole number")
+            .positive("Quantity must be more than 0"),
+          sellPrice: z
+            .union([
+              z.number(),
+              z.string().trim().min(1, "Sell price is required"),
+            ])
+            .transform(Number)
+            .refine(Number.isFinite, {
+              message: "Sell price must be a finite number",
+            })
+            .refine((value) => value >= 0, {
+              message: "Sell price cannot be negative",
+            })
+            .optional(),
+        })
+      )
+      .min(1, "Order must have at least one item"),
+  })
+  .superRefine((data, context) => {
+    const seenProductIds = new Set<string>();
+
+    data.items.forEach((item, index) => {
+      if (seenProductIds.has(item.productId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["items", index, "productId"],
+          message: "Duplicate product IDs are not allowed",
+        });
+      }
+
+      seenProductIds.add(item.productId);
+    });
+  });

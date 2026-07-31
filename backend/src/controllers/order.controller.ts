@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import {
+  completeImportedOrder,
   createOrder,
   getAllOrders,
   getOrderById,
@@ -12,6 +13,17 @@ export const addOrder = async (req: Request, res: Response) => {
   const order = await createOrder(req.body);
 
   return res.status(201).json({
+    success: true,
+    data: order,
+  });
+};
+
+// POST /orders/:id/complete-import
+export const completeOrderImport = async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const order = await completeImportedOrder(id, req.body);
+
+  return res.json({
     success: true,
     data: order,
   });
