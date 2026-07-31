@@ -16,10 +16,18 @@ export type OrderItem = {
   };
 };
 
-export type Order = {
+export type OrderSource = "MANUAL" | "TIKTOK";
+
+export type ImportStatus = "NEEDS_ITEMS" | "READY" | "IMPORT_FAILED";
+
+export type SalesOrder = {
   id: string;
   orderNumber: string | null;
   tiktokOrderId: string | null;
+  source: OrderSource;
+  importStatus: ImportStatus;
+  stockProcessed: boolean;
+  importedAt: string | null;
   platform: string;
   status: OrderStatus;
   customerName: string | null;
@@ -34,8 +42,10 @@ export type Order = {
   items: OrderItem[];
 };
 
+export type Order = SalesOrder;
+
 export type OrdersResponse = {
-  orders: Order[];
+  orders: SalesOrder[];
   meta: {
     total: number;
     page: number;
@@ -114,7 +124,24 @@ export const updateOrderStatus = async (
   return response.data.data;
 };
 
-export const getOrderById = async (orderId: string): Promise<Order> => {
+export const getOrderById = async (
+  orderId: string
+): Promise<SalesOrder> => {
   const response = await apiClient.get(`/orders/${orderId}`);
+  return response.data.data;
+};
+
+export const completeImportedOrder = async (
+  salesOrderId: string,
+  items: {
+    productId: string;
+    quantity: number;
+  }[]
+): Promise<SalesOrder> => {
+  const response = await apiClient.post(
+    `/orders/${salesOrderId}/complete-import`,
+    { items }
+  );
+
   return response.data.data;
 };

@@ -11,8 +11,8 @@ import {
 } from "react-native";
 import {
   getOrders,
-  Order,
   OrderStatus,
+  SalesOrder,
   updateOrderStatus,
 } from "../../api/orders";
 import { EmptyState } from "../../components/EmptyState";
@@ -61,7 +61,7 @@ const STATUS_FILTERS: (OrderStatus | "ALL")[] = [
 ];
 
 export default function OrdersScreen() {
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -281,9 +281,26 @@ export default function OrdersScreen() {
                 </Text>
               </View>
 
-              <Text style={[styles.statusBadge, getStatusStyle(order.status)]}>
-                {order.status}
-              </Text>
+              <View style={styles.badgeColumn}>
+                <Text style={[styles.statusBadge, getStatusStyle(order.status)]}>
+                  {order.status}
+                </Text>
+
+                {order.source === "TIKTOK" &&
+                order.importStatus === "NEEDS_ITEMS" ? (
+                  <Text style={[styles.statusBadge, styles.needsItemsBadge]}>
+                    Needs Items
+                  </Text>
+                ) : null}
+
+                {order.source === "TIKTOK" &&
+                order.importStatus === "READY" &&
+                order.stockProcessed ? (
+                  <Text style={[styles.statusBadge, styles.readyBadge]}>
+                    Ready
+                  </Text>
+                ) : null}
+              </View>
             </View>
 
             <View style={styles.infoRow}>
@@ -444,6 +461,18 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     overflow: "hidden",
     alignSelf: "flex-start",
+  },
+  badgeColumn: {
+    alignItems: "flex-end",
+    gap: 6,
+  },
+  needsItemsBadge: {
+    backgroundColor: UI.colors.warningSoft,
+    color: UI.colors.warning,
+  },
+  readyBadge: {
+    backgroundColor: UI.colors.successSoft,
+    color: UI.colors.success,
   },
   goodStatus: {
     backgroundColor: UI.colors.successSoft,
