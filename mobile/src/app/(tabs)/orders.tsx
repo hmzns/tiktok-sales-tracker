@@ -69,11 +69,16 @@ const getTikTokSyncErrorMessage = (error: unknown) => {
     return "Unable to sync TikTok orders. Please try again.";
   }
 
+  if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT") {
+    return "TikTok sync is taking longer than expected. It may still complete in the background.";
+  }
+
   if (!error.response) {
     return "Network request failed. Check your connection and try again.";
   }
 
   const responseData = error.response.data;
+
   const backendMessage =
     responseData &&
     typeof responseData === "object" &&

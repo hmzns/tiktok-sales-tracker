@@ -146,7 +146,10 @@ export const syncTikTokOrders = async (
 ): Promise<TikTokOrderSyncResponse> => {
   const response = await apiClient.post<TikTokOrderSyncResponse>(
     "/tiktok-shop/orders/sync",
-    { days }
+    { days },
+    {
+      timeout: 90000,
+    }
   );
 
   return response.data;
