@@ -1,7 +1,8 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import {
   Alert,
+  Keyboard,
   Platform,
   Pressable,
   RefreshControl,
@@ -15,7 +16,6 @@ import {
   getAllOrders,
   getTikTokSyncHistory,
   syncTikTokOrders,
-  updateOrderStatus,
 } from "../../api/orders";
 import type {
   OrderStatus,
@@ -39,6 +39,10 @@ const formatRM = (value: number) => {
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);
 
+  if (Number.isNaN(date.getTime())) {
+    return "Not available";
+  }
+
   return date.toLocaleDateString("en-MY", {
     year: "numeric",
     month: "short",
@@ -59,6 +63,14 @@ const getStatusStyle = (status: string) => {
 };
 
 type OrderListFilter = OrderStatus | "ALL" | "NEEDS_ITEMS";
+type DateFilter = "ALL" | "TODAY" | "LAST_7_DAYS" | "LAST_30_DAYS";
+type OrderSort =
+  | "recent"
+  | "newest"
+  | "oldest"
+  | "needs-attention"
+  | "highest"
+  | "lowest";
 
 const STATUS_FILTERS: OrderListFilter[] = [
   "ALL",
@@ -72,8 +84,153 @@ const STATUS_FILTERS: OrderListFilter[] = [
   "REFUNDED",
 ];
 
+const DATE_FILTERS: { key: DateFilter; label: string }[] = [
+  { key: "ALL", label: "All" },
+  { key: "TODAY", label: "Today" },
+  { key: "LAST_7_DAYS", label: "Last 7 Days" },
+  { key: "LAST_30_DAYS", label: "Last 30 Days" },
+];
+
+const SORT_OPTIONS: { key: OrderSort; label: string }[] = [
+  { key: "recent", label: "Default" },
+  { key: "newest", label: "Newest First" },
+  { key: "oldest", label: "Oldest First" },
+  { key: "needs-attention", label: "Needs Attention First" },
+  { key: "highest", label: "Highest Profit" },
+  { key: "lowest", label: "Lowest Profit" },
+];
+
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
 const isTikTokOrderNeedingItems = (order: SalesOrder) =>
   order.source === "TIKTOK" && order.importStatus === "NEEDS_ITEMS";
+
+const getValidTimestamp = (value: string | null | undefined) => {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? null : timestamp;
+};
+
+const getOrderCreatedTimestamp = (order: SalesOrder) =>
+  getValidTimestamp(order.createdAt);
+
+const getNeedsItemsTimestamp = (order: SalesOrder) =>
+  getValidTimestamp(order.importedAt) ?? getOrderCreatedTimestamp(order);
+
+const compareNewestFirst = (a: SalesOrder, b: SalesOrder) => {
+  const aTimestamp = getOrderCreatedTimestamp(a);
+  const bTimestamp = getOrderCreatedTimestamp(b);
+
+  if (aTimestamp === null) return bTimestamp === null ? 0 : 1;
+  if (bTimestamp === null) return -1;
+  return bTimestamp - aTimestamp;
+};
+
+const compareOldestFirst = (a: SalesOrder, b: SalesOrder) => {
+  const aTimestamp = getOrderCreatedTimestamp(a);
+  const bTimestamp = getOrderCreatedTimestamp(b);
+
+  if (aTimestamp === null) return bTimestamp === null ? 0 : 1;
+  if (bTimestamp === null) return -1;
+  return aTimestamp - bTimestamp;
+};
+
+const compareOldestNeedsItemsFirst = (a: SalesOrder, b: SalesOrder) => {
+  const aNeedsItems = isTikTokOrderNeedingItems(a);
+  const bNeedsItems = isTikTokOrderNeedingItems(b);
+
+  if (aNeedsItems !== bNeedsItems) {
+    return aNeedsItems ? -1 : 1;
+  }
+
+  if (!aNeedsItems) {
+    return compareNewestFirst(a, b);
+  }
+
+  const aTimestamp = getNeedsItemsTimestamp(a);
+  const bTimestamp = getNeedsItemsTimestamp(b);
+
+  if (aTimestamp === null) return bTimestamp === null ? 0 : 1;
+  if (bTimestamp === null) return -1;
+  return aTimestamp - bTimestamp;
+};
+
+const getNeedsItemsAge = (order: SalesOrder, now: number) => {
+  const timestamp = getNeedsItemsTimestamp(order);
+
+  if (timestamp === null) {
+    return { label: "Age unavailable", needsAttention: false };
+  }
+
+  const elapsed = Math.max(0, now - timestamp);
+
+  if (elapsed < DAY_IN_MS) {
+    return { label: "New", needsAttention: false };
+  }
+
+  const days = Math.floor(elapsed / DAY_IN_MS);
+
+  if (days <= 2) {
+    return { label: `Waiting ${days}d`, needsAttention: false };
+  }
+
+  return {
+    label: `Needs Attention · ${days} days`,
+    needsAttention: true,
+  };
+};
+
+const isWithinDateFilter = (
+  order: SalesOrder,
+  dateFilter: DateFilter,
+  now: Date
+) => {
+  if (dateFilter === "ALL") {
+    return true;
+  }
+
+  const timestamp = getOrderCreatedTimestamp(order);
+
+  if (timestamp === null) {
+    return false;
+  }
+
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+
+  if (dateFilter === "LAST_7_DAYS") {
+    start.setDate(start.getDate() - 6);
+  } else if (dateFilter === "LAST_30_DAYS") {
+    start.setDate(start.getDate() - 29);
+  }
+
+  const end = new Date(now);
+  end.setHours(0, 0, 0, 0);
+  end.setDate(end.getDate() + 1);
+
+  return timestamp >= start.getTime() && timestamp < end.getTime();
+};
+
+const orderMatchesSearch = (order: SalesOrder, normalizedSearch: string) => {
+  if (!normalizedSearch) {
+    return true;
+  }
+
+  const searchableValues = [
+    order.id,
+    order.orderNumber,
+    order.tiktokOrderId,
+    order.customerName,
+    ...order.items.map((item) => item.product.name),
+  ];
+
+  return searchableValues.some((value) =>
+    value?.toLowerCase().includes(normalizedSearch)
+  );
+};
 
 const getTikTokSyncErrorMessage = (error: unknown) => {
   if (!isAxiosError(error)) {
@@ -147,19 +304,21 @@ export default function OrdersScreen() {
   const [syncHistoryLoading, setSyncHistoryLoading] = useState(true);
   const [syncHistoryError, setSyncHistoryError] = useState(false);
   const [search, setSearch] = useState("");
+  const [dateFilter, setDateFilter] = useState<DateFilter>("ALL");
   const [statusFilter, setStatusFilter] = useState<OrderListFilter>(() =>
     filter === "needs-items" ? "NEEDS_ITEMS" : "ALL"
   );
   const [error, setError] = useState<string | null>(null);
   const [monthDifference, setMonthDifference] = useState<number | null>(null);
-  const [profitSort, setProfitSort] = useState<"recent" | "highest" | "lowest">("recent");
+  const [orderSort, setOrderSort] = useState<OrderSort>("recent");
+  const [ageReferenceTime, setAgeReferenceTime] = useState(0);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const syncInFlightRef = useRef(false);
   const syncHistoryHasDataRef = useRef(false);
   const syncHistoryRequestRef = useRef(0);
 
-  const loadOrders = async () => {
+  const loadOrders = useCallback(async () => {
     try {
       setError(null);
 
@@ -168,12 +327,13 @@ export default function OrdersScreen() {
       const previousYear =
         now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
       const [result, currentSummary, previousSummary] = await Promise.all([
-        getAllOrders(search),
+        getAllOrders(),
         getDashboardSummary(now.getFullYear(), now.getMonth() + 1),
         getDashboardSummary(previousYear, previousMonth),
       ]);
 
       setOrders(result);
+      setAgeReferenceTime(new Date().getTime());
       const currentCount = currentSummary.orderCount;
       const previousCount = previousSummary.orderCount;
       setMonthDifference(
@@ -183,12 +343,12 @@ export default function OrdersScreen() {
             : 100
           : ((currentCount - previousCount) / previousCount) * 100
       );
-    } catch (err) {
+    } catch {
       setError("Failed to load orders");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const loadSyncHistory = useCallback(async () => {
     const requestId = syncHistoryRequestRef.current + 1;
@@ -222,7 +382,7 @@ export default function OrdersScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadOrders();
-    }, [search])
+    }, [loadOrders])
   );
 
   useFocusEffect(
@@ -277,41 +437,63 @@ export default function OrdersScreen() {
 
   const activeFilter =
     filter === "needs-items" ? "NEEDS_ITEMS" : statusFilter;
-  const needsItemsCount = orders.filter(isTikTokOrderNeedingItems).length;
-  const filteredOrders = orders.filter((order) => {
-    if (activeFilter === "NEEDS_ITEMS") {
-      return isTikTokOrderNeedingItems(order);
-    }
-
-    return activeFilter === "ALL" || order.status === activeFilter;
-  });
-
-  const displayedOrders = [...filteredOrders].sort((a, b) => {
-    if (profitSort === "highest") return b.profit - a.profit;
-    if (profitSort === "lowest") return a.profit - b.profit;
-
-    if (activeFilter === "ALL") {
-      const needsItemsDifference =
-        Number(isTikTokOrderNeedingItems(b)) -
-        Number(isTikTokOrderNeedingItems(a));
-
-      if (needsItemsDifference !== 0) {
-        return needsItemsDifference;
+  const needsItemsCount = useMemo(
+    () => orders.filter(isTikTokOrderNeedingItems).length,
+    [orders]
+  );
+  const displayedOrders = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+    const now = new Date();
+    const matchingOrders = orders.filter((order) => {
+      if (!orderMatchesSearch(order, normalizedSearch)) {
+        return false;
       }
-    }
 
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-  });
+      if (!isWithinDateFilter(order, dateFilter, now)) {
+        return false;
+      }
 
-  const handleStatusUpdate = async (orderId: string, status: OrderStatus) => {
-    try {
-      await updateOrderStatus(orderId, status);
-      await loadOrders();
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.message ?? "Failed to update order status";
+      if (activeFilter === "NEEDS_ITEMS") {
+        return isTikTokOrderNeedingItems(order);
+      }
 
-      Alert.alert("Error", message);
+      return activeFilter === "ALL" || order.status === activeFilter;
+    });
+
+    return matchingOrders.sort((a, b) => {
+      if (orderSort === "highest") return b.profit - a.profit;
+      if (orderSort === "lowest") return a.profit - b.profit;
+      if (orderSort === "newest") return compareNewestFirst(a, b);
+      if (orderSort === "oldest") return compareOldestFirst(a, b);
+      if (orderSort === "needs-attention") {
+        return compareOldestNeedsItemsFirst(a, b);
+      }
+
+      if (activeFilter === "ALL") {
+        const needsItemsDifference =
+          Number(isTikTokOrderNeedingItems(b)) -
+          Number(isTikTokOrderNeedingItems(a));
+
+        if (needsItemsDifference !== 0) {
+          return needsItemsDifference;
+        }
+      }
+
+      return compareNewestFirst(a, b);
+    });
+  }, [activeFilter, dateFilter, orderSort, orders, search]);
+  const hasFilteringCriteria =
+    search.trim().length > 0 || dateFilter !== "ALL" || activeFilter !== "ALL";
+  const hasActiveFilters = hasFilteringCriteria || orderSort !== "recent";
+
+  const clearFilters = () => {
+    setSearch("");
+    setDateFilter("ALL");
+    setStatusFilter("ALL");
+    setOrderSort("recent");
+
+    if (filter) {
+      router.setParams({ filter: undefined });
     }
   };
 
@@ -383,7 +565,7 @@ export default function OrdersScreen() {
       <View style={styles.summaryCard}>
         <View>
           <Text style={styles.summaryLabel}>Order records</Text>
-          <Text style={styles.summaryValue}>{filteredOrders.length}</Text>
+          <Text style={styles.summaryValue}>{displayedOrders.length}</Text>
         </View>
         <View style={styles.comparisonBox}>
           <Text style={styles.comparisonLabel}>vs previous month</Text>
@@ -403,14 +585,14 @@ export default function OrdersScreen() {
           <Text style={styles.searchGlyph}>⌕</Text>
           <TextInput
             style={styles.searchInput}
-            placeholder="Customer or order number"
+            placeholder="Search order or TikTok order ID"
             placeholderTextColor={UI.colors.inkSubtle}
             value={search}
             onChangeText={setSearch}
-            onSubmitEditing={loadOrders}
+            onSubmitEditing={Keyboard.dismiss}
             returnKeyType="search"
           />
-          <Pressable style={styles.searchButton} onPress={loadOrders}>
+          <Pressable style={styles.searchButton} onPress={Keyboard.dismiss}>
             <Text style={styles.searchButtonText}>Search</Text>
           </Pressable>
         </View>
@@ -446,27 +628,71 @@ export default function OrdersScreen() {
           </Pressable>
         ))}
         </ScrollView>
-        <Text style={styles.filterLabel}>SORT ORDERS</Text>
-        <View style={styles.sortRow}>
-          {[
-            { key: "recent", label: "Most recent" },
-            { key: "highest", label: "Highest profit" },
-            { key: "lowest", label: "Lowest profit" },
-          ].map((option) => (
+
+        <Text style={styles.filterLabel}>DATE RANGE</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterScroll}
+        >
+          {DATE_FILTERS.map((option) => (
             <Pressable
               key={option.key}
-              style={[styles.sortButton, profitSort === option.key && styles.activeSortButton]}
-              onPress={() => setProfitSort(option.key as typeof profitSort)}
+              style={[
+                styles.filterChip,
+                dateFilter === option.key && styles.activeFilterChip,
+              ]}
+              onPress={() => setDateFilter(option.key)}
             >
-              <Text style={[styles.sortButtonText, profitSort === option.key && styles.activeSortButtonText]}>
+              <Text
+                style={[
+                  styles.filterChipText,
+                  dateFilter === option.key && styles.activeFilterChipText,
+                ]}
+              >
                 {option.label}
               </Text>
             </Pressable>
           ))}
+        </ScrollView>
+
+        <Text style={styles.filterLabel}>SORT ORDERS</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.sortScroll}
+        >
+          {SORT_OPTIONS.map((option) => (
+            <Pressable
+              key={option.key}
+              style={[
+                styles.sortButton,
+                orderSort === option.key && styles.activeSortButton,
+              ]}
+              onPress={() => setOrderSort(option.key)}
+            >
+              <Text
+                style={[
+                  styles.sortButtonText,
+                  orderSort === option.key && styles.activeSortButtonText,
+                ]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+
+        <View style={styles.resultsRow}>
+          <Text style={styles.resultText}>
+            Showing {displayedOrders.length} of {orders.length} orders
+          </Text>
+          {hasActiveFilters ? (
+            <Pressable onPress={clearFilters} hitSlop={8}>
+              <Text style={styles.clearFiltersText}>Clear Filters</Text>
+            </Pressable>
+          ) : null}
         </View>
-        <Text style={styles.resultText}>
-          Showing {displayedOrders.length} of {filteredOrders.length}
-        </Text>
       </View>
 
       {displayedOrders.length === 0 ? (
@@ -474,17 +700,24 @@ export default function OrdersScreen() {
           title={
             activeFilter === "NEEDS_ITEMS"
               ? "No TikTok orders need product details."
-              : "No orders yet"
+              : hasFilteringCriteria
+                ? "No orders match the selected filters."
+                : "No orders yet"
           }
           message={
             activeFilter === "NEEDS_ITEMS"
               ? "Incomplete TikTok orders will appear here after synchronization."
-              : "Create your first order to start tracking revenue and stock movement."
+              : hasFilteringCriteria
+                ? "Try changing or clearing your search and filter selections."
+                : "Create your first order to start tracking revenue and stock movement."
           }
         />
       ) : (
         displayedOrders.map((order) => {
           const needsItems = isTikTokOrderNeedingItems(order);
+          const needsItemsAge = needsItems
+            ? getNeedsItemsAge(order, ageReferenceTime)
+            : null;
 
           return (
             <View
@@ -511,6 +744,19 @@ export default function OrdersScreen() {
                   {needsItems ? (
                     <Text style={[styles.statusBadge, styles.needsItemsBadge]}>
                       Needs Items
+                    </Text>
+                  ) : null}
+
+                  {needsItemsAge ? (
+                    <Text
+                      style={[
+                        styles.statusBadge,
+                        needsItemsAge.needsAttention
+                          ? styles.attentionBadge
+                          : styles.ageBadge,
+                      ]}
+                    >
+                      {needsItemsAge.label}
                     </Text>
                   ) : null}
 
@@ -643,7 +889,22 @@ const styles = StyleSheet.create({
   searchRow: { minHeight: 50, flexDirection: "row", alignItems: "center", backgroundColor: UI.colors.surfaceMuted, borderWidth: 1, borderColor: UI.colors.border, borderRadius: UI.radius.medium, paddingLeft: 14 },
   searchGlyph: { color: UI.colors.inkMuted, fontSize: 22, marginRight: 8 },
   filterLabel: { color: UI.colors.inkMuted, fontSize: 10, fontWeight: "800", letterSpacing: 1, marginTop: 16, marginBottom: 9 },
-  resultText: { color: UI.colors.inkMuted, fontSize: 12, borderTopWidth: 1, borderTopColor: UI.colors.border, paddingTop: 12, marginTop: 12 },
+  resultsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: UI.colors.border,
+    paddingTop: 12,
+    marginTop: 12,
+  },
+  resultText: { flex: 1, color: UI.colors.inkMuted, fontSize: 12 },
+  clearFiltersText: {
+    color: UI.colors.primary,
+    fontSize: 12,
+    fontWeight: "800",
+  },
   emptyBox: {
     backgroundColor: "#fff",
     borderRadius: 14,
@@ -704,6 +965,14 @@ const styles = StyleSheet.create({
   needsItemsBadge: {
     backgroundColor: UI.colors.warningSoft,
     color: UI.colors.warning,
+  },
+  ageBadge: {
+    backgroundColor: UI.colors.surfaceMuted,
+    color: UI.colors.inkMuted,
+  },
+  attentionBadge: {
+    backgroundColor: UI.colors.dangerSoft,
+    color: UI.colors.danger,
   },
   readyBadge: {
     backgroundColor: UI.colors.successSoft,
@@ -855,8 +1124,8 @@ const styles = StyleSheet.create({
   filterScroll: {
     marginBottom: 10,
   },
-  sortRow: { flexDirection: "row", gap: 7 },
-  sortButton: { flex: 1, minHeight: 38, alignItems: "center", justifyContent: "center", backgroundColor: UI.colors.surfaceMuted, borderWidth: 1, borderColor: UI.colors.border, borderRadius: UI.radius.small, paddingHorizontal: 6 },
+  sortScroll: { marginBottom: 2 },
+  sortButton: { minHeight: 38, alignItems: "center", justifyContent: "center", backgroundColor: UI.colors.surfaceMuted, borderWidth: 1, borderColor: UI.colors.border, borderRadius: UI.radius.small, paddingHorizontal: 12, marginRight: 7 },
   activeSortButton: { backgroundColor: UI.colors.ink, borderColor: UI.colors.ink },
   sortButtonText: { color: UI.colors.inkMuted, fontSize: 10, fontWeight: "700", textAlign: "center" },
   activeSortButtonText: { color: "#fff" },
