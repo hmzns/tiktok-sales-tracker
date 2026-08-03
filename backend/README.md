@@ -38,6 +38,7 @@ This project is designed for a TikTok Live / TikTok Shop seller who wants to tra
 ```text
 src/
   controllers/
+  jobs/
   lib/
   middleware/
   routes/
@@ -112,6 +113,33 @@ GET /api-docs
 ```
 
 This endpoint returns a JSON list of available API endpoints.
+
+## One-shot TikTok order synchronization
+
+Build the backend, then run the standalone synchronization command from the
+`backend` directory:
+
+```bash
+npm run build
+npm run sync:tiktok-orders
+```
+
+Configure the lookback window in `.env` (invalid or missing values safely
+default to 2 days):
+
+```dotenv
+TIKTOK_AUTO_SYNC_DAYS=2
+```
+
+The command performs one synchronization and exits. It reuses the same TikTok
+order synchronization service as the manual **Sync TikTok Orders** button,
+including token refresh, pagination, and the maximum-page safeguard. Existing
+TikTok orders are ignored. Newly imported orders remain `NEEDS_ITEMS`, no order
+items are created, and stock is not deducted. The manual sync button remains
+available.
+
+Scheduling will be configured separately after local testing; the Express
+server does not schedule or expose this command as a cron endpoint.
 
 ## Main Endpoints
 

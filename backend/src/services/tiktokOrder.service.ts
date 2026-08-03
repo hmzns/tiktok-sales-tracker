@@ -79,10 +79,13 @@ export type TikTokOrderStore = {
   createBasicOrder: (
     data: BasicTikTokOrderCreateData
   ) => Promise<{ id: string }>;
-  updateSafeMetadata: (
-    id: string,
-    rawImportData: Prisma.InputJsonObject
-  ) => Promise<void>;
+};
+
+export type TikTokOrderSyncSummary = {
+  fetched: number;
+  created: number;
+  existing: number;
+  failed: number;
 };
 
 type ImportBasicTikTokOrderInput = {
@@ -182,11 +185,11 @@ export const importBasicTikTokOrder = async ({
   store,
   isUniqueConstraintError = isPrismaUniqueConstraintError,
 }: ImportBasicTikTokOrderInput): Promise<"created" | "existing"> => {
-  const rawImportData = sanitizeTikTokOrderMetadata(order, shopId);
   const existing = await store.findByTikTokOrderId(order.id);
 
   if (existing) {
-    await store.updateSafeMetadata(existing.id, rawImportData);
+    // Existing imports may have been completed or edited manually. Treat them
+    // as immutable during synchronization.
     return "existing";
   }
 
@@ -206,7 +209,6 @@ export const importBasicTikTokOrder = async ({
       throw error;
     }
 
-    await store.updateSafeMetadata(concurrentlyCreated.id, rawImportData);
     return "existing";
   }
 };
@@ -352,16 +354,11 @@ const prismaTikTokOrderStore: TikTokOrderStore = {
       data,
       select: { id: true },
     }),
-  updateSafeMetadata: async (id, rawImportData) => {
-    await prisma.salesOrder.update({
-      where: { id },
-      data: { rawImportData },
-      select: { id: true },
-    });
-  },
 };
 
-export const syncTikTokOrders = async (days: number) => {
+export const syncTikTokOrders = async (
+  days: number
+): Promise<TikTokOrderSyncSummary> => {
   console.info("tiktok_order_sync_started", { days });
 
   const syncTime = new Date();

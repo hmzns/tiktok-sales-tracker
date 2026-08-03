@@ -45,9 +45,6 @@ test("a new TikTok order creates one incomplete order without items or stock wor
       createdOrders.push(data);
       return { id: "local-order-1" };
     },
-    updateSafeMetadata: async () => {
-      assert.fail("A new order must not update an existing record");
-    },
   };
 
   const result = await importBasicTikTokOrder({
@@ -68,14 +65,14 @@ test("a new TikTok order creates one incomplete order without items or stock wor
   assert.equal(stock, 12);
 });
 
-test("an existing manually edited TikTok order keeps items and lifecycle fields", async () => {
+test("an existing manually edited TikTok order is not changed", async () => {
   const existingOrder = {
     id: "local-order-1",
     importStatus: "READY",
     stockProcessed: true,
     customerName: "Manually corrected name",
     itemIds: ["item-1", "item-2"],
-    rawImportData: {},
+    rawImportData: { manuallyPreserved: true },
   };
   let createCalls = 0;
   const store: TikTokOrderStore = {
@@ -83,10 +80,6 @@ test("an existing manually edited TikTok order keeps items and lifecycle fields"
     createBasicOrder: async () => {
       createCalls += 1;
       return { id: "unexpected" };
-    },
-    updateSafeMetadata: async (id, rawImportData) => {
-      assert.equal(id, existingOrder.id);
-      existingOrder.rawImportData = rawImportData;
     },
   };
 
@@ -106,23 +99,11 @@ test("an existing manually edited TikTok order keeps items and lifecycle fields"
   assert.equal(existingOrder.stockProcessed, true);
   assert.equal(existingOrder.customerName, "Manually corrected name");
   assert.deepEqual(existingOrder.itemIds, ["item-1", "item-2"]);
-  assert.deepEqual(existingOrder.rawImportData, {
-    tiktokOrderId: basicOrder.id,
-    status: basicOrder.status,
-    createTime: basicOrder.create_time,
-    updateTime: basicOrder.update_time,
-    currency: "MYR",
-    paymentSummary: {
-      subTotal: "25.00",
-      totalAmount: "30.00",
-    },
-    shopId: "shop-1",
-  });
+  assert.deepEqual(existingOrder.rawImportData, { manuallyPreserved: true });
 });
 
 test("a unique race is treated as an existing order instead of a duplicate", async () => {
   let findCalls = 0;
-  let metadataUpdates = 0;
   const uniqueError = new Error("unique");
   const store: TikTokOrderStore = {
     findByTikTokOrderId: async () => {
@@ -131,9 +112,6 @@ test("a unique race is treated as an existing order instead of a duplicate", asy
     },
     createBasicOrder: async () => {
       throw uniqueError;
-    },
-    updateSafeMetadata: async () => {
-      metadataUpdates += 1;
     },
   };
 
@@ -147,7 +125,6 @@ test("a unique race is treated as an existing order instead of a duplicate", asy
 
   assert.equal(result, "existing");
   assert.equal(findCalls, 2);
-  assert.equal(metadataUpdates, 1);
 });
 
 test("the create payload stores only a sanitized troubleshooting subset", () => {
