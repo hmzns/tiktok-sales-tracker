@@ -12,7 +12,7 @@ import {
   View,
 } from "react-native";
 import {
-  getOrders,
+  getAllOrders,
   OrderStatus,
   SalesOrder,
   syncTikTokOrders,
@@ -21,7 +21,7 @@ import {
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { UI } from "../../constants/ui";
 import { getDashboardSummary } from "../../api/dashboard";
 import { FloatingBackToTop } from "../../components/FloatingBackToTop";
@@ -53,8 +53,11 @@ const getStatusStyle = (status: string) => {
   return styles.neutralStatus;
 };
 
-const STATUS_FILTERS: (OrderStatus | "ALL")[] = [
+type OrderListFilter = OrderStatus | "ALL" | "NEEDS_ITEMS";
+
+const STATUS_FILTERS: OrderListFilter[] = [
   "ALL",
+  "NEEDS_ITEMS",
   "PENDING",
   "PAID",
   "PACKING",
@@ -63,6 +66,9 @@ const STATUS_FILTERS: (OrderStatus | "ALL")[] = [
   "CANCELLED",
   "REFUNDED",
 ];
+
+const isTikTokOrderNeedingItems = (order: SalesOrder) =>
+  order.source === "TIKTOK" && order.importStatus === "NEEDS_ITEMS";
 
 const getTikTokSyncErrorMessage = (error: unknown) => {
   if (!isAxiosError(error)) {
@@ -125,13 +131,15 @@ const showTikTokSyncError = (message: string) => {
 };
 
 export default function OrdersScreen() {
+  const { filter } = useLocalSearchParams<{ filter?: string }>();
   const [orders, setOrders] = useState<SalesOrder[]>([]);
-  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | "ALL">("ALL");
+  const [statusFilter, setStatusFilter] = useState<OrderListFilter>(() =>
+    filter === "needs-items" ? "NEEDS_ITEMS" : "ALL"
+  );
   const [error, setError] = useState<string | null>(null);
   const [monthDifference, setMonthDifference] = useState<number | null>(null);
   const [profitSort, setProfitSort] = useState<"recent" | "highest" | "lowest">("recent");
@@ -148,13 +156,12 @@ export default function OrdersScreen() {
       const previousYear =
         now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
       const [result, currentSummary, previousSummary] = await Promise.all([
-        getOrders(1, 20, search, statusFilter),
+        getAllOrders(search),
         getDashboardSummary(now.getFullYear(), now.getMonth() + 1),
         getDashboardSummary(previousYear, previousMonth),
       ]);
 
-      setOrders(result.orders);
-      setTotal(result.meta.total);
+      setOrders(result);
       const currentCount = currentSummary.orderCount;
       const previousCount = previousSummary.orderCount;
       setMonthDifference(
@@ -175,7 +182,7 @@ export default function OrdersScreen() {
   useFocusEffect(
     useCallback(() => {
       loadOrders();
-    }, [search, statusFilter])
+    }, [search])
   );
 
   const onRefresh = () => {
@@ -216,9 +223,31 @@ export default function OrdersScreen() {
     }
   };
 
-  const displayedOrders = [...orders].sort((a, b) => {
+  const activeFilter =
+    filter === "needs-items" ? "NEEDS_ITEMS" : statusFilter;
+  const needsItemsCount = orders.filter(isTikTokOrderNeedingItems).length;
+  const filteredOrders = orders.filter((order) => {
+    if (activeFilter === "NEEDS_ITEMS") {
+      return isTikTokOrderNeedingItems(order);
+    }
+
+    return activeFilter === "ALL" || order.status === activeFilter;
+  });
+
+  const displayedOrders = [...filteredOrders].sort((a, b) => {
     if (profitSort === "highest") return b.profit - a.profit;
     if (profitSort === "lowest") return a.profit - b.profit;
+
+    if (activeFilter === "ALL") {
+      const needsItemsDifference =
+        Number(isTikTokOrderNeedingItems(b)) -
+        Number(isTikTokOrderNeedingItems(a));
+
+      if (needsItemsDifference !== 0) {
+        return needsItemsDifference;
+      }
+    }
+
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
@@ -295,7 +324,7 @@ export default function OrdersScreen() {
       <View style={styles.summaryCard}>
         <View>
           <Text style={styles.summaryLabel}>Order records</Text>
-          <Text style={styles.summaryValue}>{total}</Text>
+          <Text style={styles.summaryValue}>{filteredOrders.length}</Text>
         </View>
         <View style={styles.comparisonBox}>
           <Text style={styles.comparisonLabel}>vs previous month</Text>
@@ -327,26 +356,33 @@ export default function OrdersScreen() {
           </Pressable>
         </View>
 
-        <Text style={styles.filterLabel}>FILTER BY STATUS</Text>
+        <Text style={styles.filterLabel}>FILTER ORDERS</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
         {STATUS_FILTERS.map((status) => (
           <Pressable
             key={status}
             style={[
               styles.filterChip,
-              statusFilter === status && styles.activeFilterChip,
+              activeFilter === status && styles.activeFilterChip,
             ]}
             onPress={() => {
               setStatusFilter(status);
+              if (filter) {
+                router.setParams({ filter: undefined });
+              }
             }}
           >
             <Text
               style={[
                 styles.filterChipText,
-                statusFilter === status && styles.activeFilterChipText,
+                activeFilter === status && styles.activeFilterChipText,
               ]}
             >
-              {status === "ALL" ? "All" : status.toLowerCase()}
+              {status === "ALL"
+                ? "All"
+                : status === "NEEDS_ITEMS"
+                  ? `Needs Items (${needsItemsCount})`
+                  : status.toLowerCase()}
             </Text>
           </Pressable>
         ))}
@@ -369,86 +405,109 @@ export default function OrdersScreen() {
             </Pressable>
           ))}
         </View>
-        <Text style={styles.resultText}>Showing {orders.length} of {total}</Text>
+        <Text style={styles.resultText}>
+          Showing {displayedOrders.length} of {filteredOrders.length}
+        </Text>
       </View>
 
-      {orders.length === 0 ? (
+      {displayedOrders.length === 0 ? (
         <EmptyState
-          title="No orders yet"
-          message="Create your first order to start tracking revenue and stock movement."
+          title={
+            activeFilter === "NEEDS_ITEMS"
+              ? "No TikTok orders need product details."
+              : "No orders yet"
+          }
+          message={
+            activeFilter === "NEEDS_ITEMS"
+              ? "Incomplete TikTok orders will appear here after synchronization."
+              : "Create your first order to start tracking revenue and stock movement."
+          }
         />
       ) : (
-        displayedOrders.map((order) => (
-          <View key={order.id} style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.flexItem}>
-                <Text style={styles.orderNumber}>
-                  {order.orderNumber ?? order.id}
-                </Text>
-                <Text style={styles.customerName}>
-                  {order.customerName ?? "No customer name"}
-                </Text>
-              </View>
+        displayedOrders.map((order) => {
+          const needsItems = isTikTokOrderNeedingItems(order);
 
-              <View style={styles.badgeColumn}>
-                <Text style={[styles.statusBadge, getStatusStyle(order.status)]}>
-                  {order.status}
-                </Text>
-
-                {order.source === "TIKTOK" &&
-                order.importStatus === "NEEDS_ITEMS" ? (
-                  <Text style={[styles.statusBadge, styles.needsItemsBadge]}>
-                    Needs Items
-                  </Text>
-                ) : null}
-
-                {order.source === "TIKTOK" &&
-                order.importStatus === "READY" &&
-                order.stockProcessed ? (
-                  <Text style={[styles.statusBadge, styles.readyBadge]}>
-                    Ready
-                  </Text>
-                ) : null}
-              </View>
-            </View>
-
-            <View style={styles.infoRow}>
-              <Text style={styles.label}>Date</Text>
-              <Text style={styles.value}>{formatDate(order.createdAt)}</Text>
-            </View>
-
-            <View style={styles.infoRow}>
-              <Text style={styles.label}>Platform</Text>
-              <Text style={styles.value}>{order.platform}</Text>
-            </View>
-
-            <View style={styles.infoRow}>
-              <Text style={styles.label}>Total</Text>
-              <Text style={styles.value}>{formatRM(order.total)}</Text>
-            </View>
-
-            <View style={styles.infoRow}>
-              <Text style={styles.label}>Profit</Text>
-              <Text
-                style={order.profit >= 0 ? styles.profitText : styles.lossText}
-              >
-                {formatRM(order.profit)}
-              </Text>
-            </View>
-
-            <Pressable
-              style={styles.detailsButton}
-              onPress={() =>
-                router.push({
-                  pathname: "/order-detail" as any,
-                  params: { orderId: order.id },
-                })
-              }
+          return (
+            <View
+              key={order.id}
+              style={[styles.card, needsItems && styles.needsItemsCard]}
             >
-              <Text style={styles.detailsButtonText}>View order</Text>
-            </Pressable>
-          </View>
-        ))
+              <View style={styles.cardHeader}>
+                <View style={styles.flexItem}>
+                  <Text style={styles.orderNumber}>
+                    {order.orderNumber ?? order.id}
+                  </Text>
+                  <Text style={styles.customerName}>
+                    {order.customerName ?? "No customer name"}
+                  </Text>
+                </View>
+
+                <View style={styles.badgeColumn}>
+                  <Text
+                    style={[styles.statusBadge, getStatusStyle(order.status)]}
+                  >
+                    {order.status}
+                  </Text>
+
+                  {needsItems ? (
+                    <Text style={[styles.statusBadge, styles.needsItemsBadge]}>
+                      Needs Items
+                    </Text>
+                  ) : null}
+
+                  {order.source === "TIKTOK" &&
+                  order.importStatus === "READY" &&
+                  order.stockProcessed ? (
+                    <Text style={[styles.statusBadge, styles.readyBadge]}>
+                      Ready
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+
+              <View style={styles.infoRow}>
+                <Text style={styles.label}>Date</Text>
+                <Text style={styles.value}>{formatDate(order.createdAt)}</Text>
+              </View>
+
+              <View style={styles.infoRow}>
+                <Text style={styles.label}>Platform</Text>
+                <Text style={styles.value}>{order.platform}</Text>
+              </View>
+
+              <View style={styles.infoRow}>
+                <Text style={styles.label}>Total</Text>
+                <Text style={styles.value}>{formatRM(order.total)}</Text>
+              </View>
+
+              <View style={styles.infoRow}>
+                <Text style={styles.label}>Profit</Text>
+                <Text
+                  style={order.profit >= 0 ? styles.profitText : styles.lossText}
+                >
+                  {formatRM(order.profit)}
+                </Text>
+              </View>
+
+              <Pressable
+                style={[
+                  styles.detailsButton,
+                  needsItems && styles.completeOrderButton,
+                ]}
+                onPress={() =>
+                  router.push({
+                    pathname: "/order-detail" as any,
+                    params: { orderId: order.id },
+                  })
+                }
+              >
+                <Text style={styles.detailsButtonText}>
+                  {needsItems ? "Complete Order" : "View order"}
+                </Text>
+              </Pressable>
+            </View>
+          );
+        })
       )}
     </ScrollView>
     <FloatingBackToTop
@@ -545,6 +604,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: UI.colors.border,
     ...UI.shadow,
+  },
+  needsItemsCard: {
+    backgroundColor: "#FFFCF5",
+    borderColor: "#FEC84B",
+    borderWidth: 2,
   },
   cardHeader: {
     flexDirection: "row",
@@ -772,6 +836,10 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "700",
     textAlign: "center",
+  },
+  completeOrderButton: {
+    backgroundColor: UI.colors.warning,
+    borderColor: UI.colors.warning,
   },
   detailsArrow: { color: UI.colors.primary, fontSize: 17, fontWeight: "700" },
 });

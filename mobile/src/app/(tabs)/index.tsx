@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { getDashboardSummary } from "../../api/dashboard";
+import { getAllOrders } from "../../api/orders";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { UI } from "../../constants/ui";
@@ -57,6 +58,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [netProfitDifference, setNetProfitDifference] = useState<number | null>(null);
+  const [needsItemsCount, setNeedsItemsCount] = useState(0);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -66,11 +68,19 @@ export default function HomeScreen() {
 
       const previousMonth = currentMonth === 1 ? 12 : currentMonth - 1;
       const previousYear = currentMonth === 1 ? currentYear - 1 : currentYear;
-      const [data, previousData] = await Promise.all([
+      const [data, previousData, orders] = await Promise.all([
         getDashboardSummary(currentYear, currentMonth),
         getDashboardSummary(previousYear, previousMonth),
+        getAllOrders(),
       ]);
       setDashboard(data);
+      setNeedsItemsCount(
+        orders.filter(
+          (order) =>
+            order.source === "TIKTOK" &&
+            order.importStatus === "NEEDS_ITEMS"
+        ).length
+      );
       setNetProfitDifference(
         previousData.netProfit === 0
           ? data.netProfit === 0
@@ -142,6 +152,24 @@ export default function HomeScreen() {
           </Text>
         </View>
       </View>
+
+      <Pressable
+        style={styles.needsItemsCard}
+        onPress={() =>
+          router.push({
+            pathname: "/orders" as any,
+            params: { filter: "needs-items" },
+          })
+        }
+      >
+        <View style={styles.flexItem}>
+          <Text style={styles.needsItemsLabel}>
+            TikTok Orders Needing Items
+          </Text>
+          <Text style={styles.needsItemsValue}>{needsItemsCount}</Text>
+        </View>
+        <Text style={styles.needsItemsArrow}>→</Text>
+      </Pressable>
 
       <Pressable
         style={styles.linkButton}
@@ -316,6 +344,37 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: UI.colors.inkMuted,
     marginTop: 4,
+  },
+  needsItemsCard: {
+    minHeight: 92,
+    backgroundColor: UI.colors.warningSoft,
+    borderWidth: 1,
+    borderColor: "#FEC84B",
+    borderRadius: UI.radius.large,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    marginBottom: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    ...UI.shadow,
+  },
+  needsItemsLabel: {
+    color: UI.colors.warning,
+    fontSize: 13,
+    fontWeight: "700",
+    marginBottom: 5,
+  },
+  needsItemsValue: {
+    color: UI.colors.ink,
+    fontSize: 28,
+    fontWeight: "800",
+  },
+  needsItemsArrow: {
+    color: UI.colors.warning,
+    fontSize: 24,
+    fontWeight: "700",
   },
   netProfitCard: {
     backgroundColor: UI.colors.ink,

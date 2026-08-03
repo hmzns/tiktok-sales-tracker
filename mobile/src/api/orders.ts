@@ -123,6 +123,31 @@ export const getOrders = async (
   };
 };
 
+const ALL_ORDERS_PAGE_SIZE = 100;
+
+export const getAllOrders = async (search = ""): Promise<SalesOrder[]> => {
+  const firstPage = await getOrders(1, ALL_ORDERS_PAGE_SIZE, search);
+
+  if (firstPage.meta.totalPages <= 1) {
+    return firstPage.orders;
+  }
+
+  const remainingPages = await Promise.all(
+    Array.from(
+      { length: firstPage.meta.totalPages - 1 },
+      (_, index) => getOrders(index + 2, ALL_ORDERS_PAGE_SIZE, search)
+    )
+  );
+
+  const uniqueOrders = new Map<string, SalesOrder>();
+
+  [firstPage, ...remainingPages].forEach((page) => {
+    page.orders.forEach((order) => uniqueOrders.set(order.id, order));
+  });
+
+  return Array.from(uniqueOrders.values());
+};
+
 export const updateOrderStatus = async (
   orderId: string,
   status: OrderStatus
