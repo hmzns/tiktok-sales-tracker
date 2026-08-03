@@ -13,10 +13,14 @@ import {
 } from "react-native";
 import {
   getAllOrders,
-  OrderStatus,
-  SalesOrder,
+  getTikTokSyncHistory,
   syncTikTokOrders,
   updateOrderStatus,
+} from "../../api/orders";
+import type {
+  OrderStatus,
+  SalesOrder,
+  TikTokSyncHistory,
 } from "../../api/orders";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
@@ -25,6 +29,7 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { UI } from "../../constants/ui";
 import { getDashboardSummary } from "../../api/dashboard";
 import { FloatingBackToTop } from "../../components/FloatingBackToTop";
+import { TikTokSyncStatusCard } from "../../components/TikTokSyncStatusCard";
 import { showSuccessMessage } from "../../utils/showSuccessMessage";
 
 const formatRM = (value: number) => {
@@ -136,6 +141,11 @@ export default function OrdersScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncHistory, setSyncHistory] = useState<TikTokSyncHistory | null>(
+    null
+  );
+  const [syncHistoryLoading, setSyncHistoryLoading] = useState(true);
+  const [syncHistoryError, setSyncHistoryError] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderListFilter>(() =>
     filter === "needs-items" ? "NEEDS_ITEMS" : "ALL"
@@ -146,6 +156,8 @@ export default function OrdersScreen() {
   const [showBackToTop, setShowBackToTop] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const syncInFlightRef = useRef(false);
+  const syncHistoryHasDataRef = useRef(false);
+  const syncHistoryRequestRef = useRef(0);
 
   const loadOrders = async () => {
     try {
@@ -175,19 +187,58 @@ export default function OrdersScreen() {
       setError("Failed to load orders");
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
+  const loadSyncHistory = useCallback(async () => {
+    const requestId = syncHistoryRequestRef.current + 1;
+    syncHistoryRequestRef.current = requestId;
+
+    if (!syncHistoryHasDataRef.current) {
+      setSyncHistoryLoading(true);
+    }
+    setSyncHistoryError(false);
+
+    try {
+      const result = await getTikTokSyncHistory(10);
+
+      if (syncHistoryRequestRef.current !== requestId) {
+        return;
+      }
+
+      syncHistoryHasDataRef.current = true;
+      setSyncHistory(result.data);
+    } catch {
+      if (syncHistoryRequestRef.current === requestId) {
+        setSyncHistoryError(true);
+      }
+    } finally {
+      if (syncHistoryRequestRef.current === requestId) {
+        setSyncHistoryLoading(false);
+      }
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
-      loadOrders();
+      void loadOrders();
     }, [search])
   );
 
-  const onRefresh = () => {
+  useFocusEffect(
+    useCallback(() => {
+      void loadSyncHistory();
+    }, [loadSyncHistory])
+  );
+
+  const onRefresh = async () => {
     setRefreshing(true);
-    loadOrders();
+
+    try {
+      await Promise.all([loadOrders(), loadSyncHistory()]);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleTikTokSync = async () => {
@@ -218,6 +269,7 @@ export default function OrdersScreen() {
     } catch (error) {
       showTikTokSyncError(getTikTokSyncErrorMessage(error));
     } finally {
+      void loadSyncHistory();
       syncInFlightRef.current = false;
       setSyncing(false);
     }
@@ -320,6 +372,13 @@ export default function OrdersScreen() {
           {syncing ? "Syncing..." : "Sync TikTok Orders"}
         </Text>
       </Pressable>
+
+      <TikTokSyncStatusCard
+        data={syncHistory}
+        loading={syncHistoryLoading}
+        error={syncHistoryError}
+        onRetry={loadSyncHistory}
+      />
 
       <View style={styles.summaryCard}>
         <View>

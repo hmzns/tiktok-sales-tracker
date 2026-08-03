@@ -7,7 +7,11 @@ import {
   syncAuthorizedTikTokShop,
   TikTokCallbackError,
 } from "../services/tiktokShop.service";
-import { syncTikTokOrders } from "../services/tiktokOrder.service";
+import {
+  getTikTokSyncHistory,
+  syncTikTokOrdersWithHistory,
+  TikTokSyncSource,
+} from "../services/tiktokSync.service";
 
 export const connect = async (req: Request, res: Response) => {
   const authorization = await createTikTokShopAuthorization();
@@ -106,10 +110,24 @@ export const syncShop = async (req: Request, res: Response) => {
 };
 
 export const syncOrders = async (req: Request, res: Response) => {
-  const summary = await syncTikTokOrders(req.body.days);
+  const summary = await syncTikTokOrdersWithHistory(
+    req.body.days,
+    TikTokSyncSource.MANUAL
+  );
 
   return res.json({
     success: true,
     data: summary,
+  });
+};
+
+export const getSyncHistory = async (req: Request, res: Response) => {
+  const history = await getTikTokSyncHistory(
+    res.locals.validatedQuery.limit
+  );
+
+  return res.json({
+    success: true,
+    data: history,
   });
 };

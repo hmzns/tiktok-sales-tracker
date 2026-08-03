@@ -25,3 +25,28 @@ export const validate =
       });
     }
   };
+
+export const validateQuery =
+  (schema: z.ZodType) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.locals.validatedQuery = schema.parse(req.query);
+      next();
+    } catch (error) {
+      if (error instanceof ZodError) {
+        return res.status(400).json({
+          success: false,
+          message: "Validation failed",
+          errors: error.issues.map((issue) => ({
+            field: issue.path.join(".") || "query",
+            message: issue.message,
+          })),
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        message: "Validation failed",
+      });
+    }
+  };

@@ -66,6 +66,45 @@ export type TikTokOrderSyncResponse = {
   };
 };
 
+export type TikTokSyncSource = "MANUAL" | "SCHEDULED";
+
+export type TikTokSyncStatus = "SUCCESS" | "FAILED";
+
+export type TikTokSyncErrorCategory =
+  | "NOT_CONNECTED"
+  | "SHOP_METADATA_MISSING"
+  | "TOKEN_REFRESH_FAILED"
+  | "TIKTOK_UNAVAILABLE"
+  | "DATABASE_ERROR"
+  | "VALIDATION_ERROR"
+  | "UNKNOWN";
+
+export type TikTokSyncRun = {
+  id: string;
+  source: TikTokSyncSource;
+  status: TikTokSyncStatus;
+  days: number;
+  fetched: number;
+  created: number;
+  existing: number;
+  failed: number;
+  errorCategory: TikTokSyncErrorCategory | null;
+  startedAt: string;
+  completedAt: string;
+  durationMs: number | null;
+};
+
+export type TikTokSyncHistoryResponse = {
+  success: true;
+  data: {
+    lastAttempt: TikTokSyncRun | null;
+    lastSuccessful: TikTokSyncRun | null;
+    history: TikTokSyncRun[];
+  };
+};
+
+export type TikTokSyncHistory = TikTokSyncHistoryResponse["data"];
+
 export type CreateOrderInput = {
   orderNumber?: string;
   platform?: "MANUAL" | "TIKTOK_SHOP" | "SHOPEE" | "LAZADA";
@@ -175,6 +214,17 @@ export const syncTikTokOrders = async (
     {
       timeout: 90000,
     }
+  );
+
+  return response.data;
+};
+
+export const getTikTokSyncHistory = async (
+  limit = 10
+): Promise<TikTokSyncHistoryResponse> => {
+  const response = await apiClient.get<TikTokSyncHistoryResponse>(
+    "/tiktok-shop/sync-history",
+    { params: { limit } }
   );
 
   return response.data;

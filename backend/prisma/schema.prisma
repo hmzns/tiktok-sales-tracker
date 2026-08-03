@@ -55,6 +55,16 @@ enum StockMovementType {
   DAMAGE
 }
 
+enum TikTokSyncSource {
+  MANUAL
+  SCHEDULED
+}
+
+enum TikTokSyncStatus {
+  SUCCESS
+  FAILED
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -136,6 +146,24 @@ model TikTokOAuthState {
   createdAt DateTime  @default(now())
 
   @@index([expiresAt])
+}
+
+model TikTokSyncRun {
+  id            String           @id @default(cuid())
+  source        TikTokSyncSource
+  status        TikTokSyncStatus
+  days          Int
+  fetched       Int              @default(0)
+  created       Int              @default(0)
+  existing      Int              @default(0)
+  failed        Int              @default(0)
+  errorCategory String?
+  startedAt     DateTime
+  completedAt   DateTime
+  durationMs    Int?
+
+  @@index([completedAt(sort: Desc)])
+  @@index([status, completedAt(sort: Desc)])
 }
 
 model OrderItem {
