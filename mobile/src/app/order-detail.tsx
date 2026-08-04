@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -32,6 +33,7 @@ type SelectedImportedOrderItem = {
   sku: string;
   quantity: number;
   stock: number;
+  sellPrice: number;
 };
 
 type ApiError = {
@@ -92,8 +94,30 @@ const getCompletionErrorMessage = (error: unknown) => {
   return "Unable to complete the imported order. Please try again.";
 };
 
+const isCompletedImportedOrder = (
+  value: SalesOrder | null | undefined
+): value is SalesOrder =>
+  Boolean(
+    value &&
+      value.source === "TIKTOK" &&
+      value.importStatus === "READY" &&
+      value.stockProcessed &&
+      Array.isArray(value.items)
+  );
+
+const formatOrderDate = (dateString: string | null) => {
+  if (!dateString) {
+    return "Not available";
+  }
+
+  const date = new Date(dateString);
+  return Number.isNaN(date.getTime()) ? "Not available" : date.toLocaleString();
+};
+
 export default function OrderDetailScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
+  const { width } = useWindowDimensions();
+  const isSmallScreen = width < 600;
 
   const [order, setOrder] = useState<SalesOrder | null>(null);
   const [loading, setLoading] = useState(true);
@@ -102,19 +126,20 @@ export default function OrderDetailScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [productLoadError, setProductLoadError] = useState("");
-  const [selectedProductId, setSelectedProductId] = useState("");
-  const [quantity, setQuantity] = useState("1");
+  const [productSearch, setProductSearch] = useState("");
   const [selectedItems, setSelectedItems] = useState<
     SelectedImportedOrderItem[]
   >([]);
   const [fieldErrors, setFieldErrors] = useState({
     product: "",
-    quantity: "",
     selectedItems: "",
   });
   const [completionError, setCompletionError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
+  const confirmationOpenRef = useRef(false);
+  const productsLoadedRef = useRef(false);
+  const productsLoadingRef = useRef(false);
 
   const loadOrder = async (showLoading = true) => {
     if (!orderId) return;
@@ -151,18 +176,28 @@ export default function OrderDetailScreen() {
     }
   };
 
-  const loadProducts = async () => {
+  const loadProducts = async (force = false) => {
+    if (
+      productsLoadingRef.current ||
+      (!force && productsLoadedRef.current)
+    ) {
+      return;
+    }
+
     try {
+      productsLoadingRef.current = true;
       setLoadingProducts(true);
       setProductLoadError("");
 
       const result = await getProducts(1, 100, "", true);
       setProducts(result.products);
+      productsLoadedRef.current = true;
     } catch {
       setProductLoadError(
         "Unable to load available products. Check your connection and try again."
       );
     } finally {
+      productsLoadingRef.current = false;
       setLoadingProducts(false);
     }
   };
@@ -235,85 +270,140 @@ export default function OrderDetailScreen() {
     order.importStatus === "NEEDS_ITEMS" &&
     !order.stockProcessed;
 
-  const selectedProduct = products.find(
-    (product) => product.id === selectedProductId
+  const activeProducts = useMemo(
+    () => products.filter((product) => product.isActive),
+    [products]
+  );
+  const normalizedProductSearch = productSearch.trim().toLowerCase();
+  const filteredProducts = useMemo(() => {
+    if (!normalizedProductSearch) {
+      return activeProducts;
+    }
+
+    return activeProducts.filter((product) =>
+      [product.name, product.sku].some((value) =>
+        value.toLowerCase().includes(normalizedProductSearch)
+      )
+    );
+  }, [activeProducts, normalizedProductSearch]);
+
+  const selectedProductIds = useMemo(
+    () => new Set(selectedItems.map((item) => item.productId)),
+    [selectedItems]
   );
 
-  const handleAddItem = () => {
-    const errors = {
-      product: "",
-      quantity: "",
-    };
-    const parsedQuantity = Number(quantity);
+  const getSelectedItemError = (item: SelectedImportedOrderItem) => {
+    const currentProduct = products.find(
+      (product) => product.id === item.productId
+    );
 
-    if (!selectedProduct) {
-      errors.product = "Please select a product.";
+    if (!currentProduct || !currentProduct.isActive) {
+      return "This product is no longer available. Remove it and choose another product.";
     }
 
-    if (
-      !quantity.trim() ||
-      !Number.isInteger(parsedQuantity) ||
-      parsedQuantity <= 0
-    ) {
-      errors.quantity = "Quantity must be a positive whole number.";
+    if (!Number.isInteger(item.quantity) || item.quantity < 1) {
+      return "Quantity must be a whole number of at least 1.";
     }
 
-    const existingItem = selectedProduct
-      ? selectedItems.find(
-          (item) => item.productId === selectedProduct.id
-        )
-      : undefined;
-    const combinedQuantity =
-      (existingItem?.quantity ?? 0) +
-      (Number.isInteger(parsedQuantity) ? parsedQuantity : 0);
-
-    if (
-      selectedProduct &&
-      !errors.quantity &&
-      combinedQuantity > selectedProduct.stock
-    ) {
-      errors.quantity = `Quantity cannot exceed available stock (${selectedProduct.stock}).`;
+    if (item.quantity > currentProduct.stock) {
+      return `Quantity cannot exceed available stock (${currentProduct.stock}).`;
     }
 
-    setFieldErrors((current) => ({
-      ...current,
-      product: errors.product,
-      quantity: errors.quantity,
-    }));
+    return "";
+  };
 
-    if (errors.product || errors.quantity || !selectedProduct) {
+  const selectedItemErrors = selectedItems.map((item) => ({
+    productId: item.productId,
+    message: getSelectedItemError(item),
+  }));
+  const hasInvalidSelection = selectedItemErrors.some(
+    (itemError) => Boolean(itemError.message)
+  );
+  const totalSelectedUnits = selectedItems.reduce(
+    (total, item) => total + item.quantity,
+    0
+  );
+  const estimatedSubtotal = selectedItems.reduce(
+    (total, item) => {
+      const currentSellPrice =
+        products.find((product) => product.id === item.productId)?.sellPrice ??
+        item.sellPrice;
+
+      return total + currentSellPrice * item.quantity;
+    },
+    0
+  );
+  const estimatedOrderTotal = order
+    ? estimatedSubtotal - order.discount + order.shippingFee
+    : estimatedSubtotal;
+  const completionDisabled =
+    selectedItems.length === 0 || hasInvalidSelection || submitting;
+
+  const handleAddProduct = (product: Product) => {
+    if (!product.isActive) {
+      setFieldErrors((current) => ({
+        ...current,
+        product: "This product is no longer active.",
+      }));
       return;
     }
 
-    if (existingItem) {
-      setSelectedItems((currentItems) =>
-        currentItems.map((item) =>
-          item.productId === selectedProduct.id
-            ? { ...item, quantity: item.quantity + parsedQuantity }
-            : item
-        )
-      );
-    } else {
-      setSelectedItems((currentItems) => [
-        ...currentItems,
-        {
-          productId: selectedProduct.id,
-          name: selectedProduct.name,
-          sku: selectedProduct.sku,
-          quantity: parsedQuantity,
-          stock: selectedProduct.stock,
-        },
-      ]);
+    if (selectedProductIds.has(product.id)) {
+      setFieldErrors((current) => ({
+        ...current,
+        product: `${product.name} has already been added. Adjust its quantity below.`,
+      }));
+      return;
     }
 
-    setSelectedProductId("");
-    setQuantity("1");
-    setFieldErrors((current) => ({
-      ...current,
-      product: "",
-      quantity: "",
-      selectedItems: "",
-    }));
+    if (product.stock < 1) {
+      setFieldErrors((current) => ({
+        ...current,
+        product: `${product.name} is out of stock.`,
+      }));
+      return;
+    }
+
+    setSelectedItems((currentItems) =>
+      currentItems.some((item) => item.productId === product.id)
+        ? currentItems
+        : [
+            ...currentItems,
+            {
+              productId: product.id,
+              name: product.name,
+              sku: product.sku,
+              quantity: 1,
+              stock: product.stock,
+              sellPrice: product.sellPrice,
+            },
+          ]
+    );
+    setFieldErrors({ product: "", selectedItems: "" });
+    setCompletionError("");
+  };
+
+  const handleChangeQuantity = (productId: string, change: -1 | 1) => {
+    setSelectedItems((currentItems) =>
+      currentItems.map((item) => {
+        if (item.productId !== productId) {
+          return item;
+        }
+
+        const currentProduct = products.find(
+          (product) => product.id === productId
+        );
+        const availableStock = currentProduct?.stock ?? item.stock;
+        const nextQuantity = item.quantity + change;
+
+        if (nextQuantity < 1 || nextQuantity > availableStock) {
+          return item;
+        }
+
+        return { ...item, quantity: nextQuantity };
+      })
+    );
+    setFieldErrors((current) => ({ ...current, selectedItems: "" }));
     setCompletionError("");
   };
 
@@ -321,17 +411,26 @@ export default function OrderDetailScreen() {
     setSelectedItems((currentItems) =>
       currentItems.filter((item) => item.productId !== productId)
     );
+    setFieldErrors((current) => ({
+      ...current,
+      product: "",
+      selectedItems: "",
+    }));
+    setCompletionError("");
   };
 
-  const handleCompleteOrder = async () => {
+  const submitCompletion = async () => {
     if (submittingRef.current) {
       return;
     }
 
-    if (selectedItems.length === 0) {
+    if (selectedItems.length === 0 || hasInvalidSelection) {
       setFieldErrors((current) => ({
         ...current,
-        selectedItems: "Please add at least one item to complete the order.",
+        selectedItems:
+          selectedItems.length === 0
+            ? "Please add at least one item to complete the order."
+            : "Review the highlighted quantities before completing the order.",
       }));
       return;
     }
@@ -354,39 +453,46 @@ export default function OrderDetailScreen() {
         }))
       );
 
-      setOrder(completedOrder);
+      const refreshedOrder = await loadOrder(false);
+      const latestCompletedOrder = isCompletedImportedOrder(refreshedOrder)
+        ? refreshedOrder
+        : isCompletedImportedOrder(completedOrder)
+          ? completedOrder
+          : null;
+
+      if (!latestCompletedOrder) {
+        setCompletionError(
+          "The server returned an unexpected response. Reload the order before trying again."
+        );
+        return;
+      }
+
+      setOrder(latestCompletedOrder);
       setSelectedItems([]);
-      setSelectedProductId("");
-      setQuantity("1");
-      setFieldErrors({
-        product: "",
-        quantity: "",
-        selectedItems: "",
-      });
+      setProductSearch("");
+      setFieldErrors({ product: "", selectedItems: "" });
 
       showSuccessMessage("Imported order completed successfully.");
-
-      const refreshedOrder = await loadOrder(false);
 
       if (!refreshedOrder) {
         setCompletionError(
           "The order was completed, but its latest details could not be reloaded. Reopen this order to refresh it."
         );
-      } else if (
-        refreshedOrder.importStatus !== "READY" ||
-        !refreshedOrder.stockProcessed
-      ) {
-        setCompletionError(
-          "The order was completed, but its latest Ready status could not be confirmed. Refresh the order and try again."
-        );
       }
     } catch (error) {
       setCompletionError(getCompletionErrorMessage(error));
 
+      const status =
+        typeof error === "object" && error !== null
+          ? (error as ApiError).response?.status
+          : undefined;
+
+      if (status === 400 || status === 404) {
+        await loadProducts(true);
+      }
+
       if (
-        typeof error === "object" &&
-        error !== null &&
-        (error as ApiError).response?.status === 409
+        status === 409
       ) {
         await loadOrder(false);
       }
@@ -394,6 +500,59 @@ export default function OrderDetailScreen() {
       submittingRef.current = false;
       setSubmitting(false);
     }
+  };
+
+  const handleCompleteOrder = () => {
+    if (
+      completionDisabled ||
+      submittingRef.current ||
+      confirmationOpenRef.current
+    ) {
+      return;
+    }
+
+    const confirmationMessage =
+      "Complete this order and deduct the selected quantities from stock?";
+
+    confirmationOpenRef.current = true;
+
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm(confirmationMessage);
+      confirmationOpenRef.current = false;
+
+      if (confirmed) {
+        void submitCompletion();
+      }
+
+      return;
+    }
+
+    Alert.alert(
+      "Complete Order",
+      confirmationMessage,
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+          onPress: () => {
+            confirmationOpenRef.current = false;
+          },
+        },
+        {
+          text: "Complete Order",
+          onPress: () => {
+            confirmationOpenRef.current = false;
+            void submitCompletion();
+          },
+        },
+      ],
+      {
+        cancelable: true,
+        onDismiss: () => {
+          confirmationOpenRef.current = false;
+        },
+      },
+    );
   };
 
   if (loading) {
@@ -436,13 +595,20 @@ export default function OrderDetailScreen() {
     order.status !== "REFUNDED";
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      contentContainerStyle={[
+        styles.container,
+        isSmallScreen && styles.smallScreenContainer,
+      ]}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+    >
       <Text style={styles.title}>
-        {order.orderNumber || "Order Detail"}
+        {order.orderNumber || order.id}
       </Text>
 
       <Text style={styles.subtitle}>
-        {new Date(order.createdAt).toLocaleString()}
+        {order.source === "TIKTOK" ? "TikTok order" : "Order detail"}
       </Text>
 
       {completionError ? (
@@ -454,39 +620,43 @@ export default function OrderDetailScreen() {
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Order Information</Text>
 
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Customer</Text>
-          <Text style={styles.infoValue}>
-            {order.customerName || "No customer name"}
-          </Text>
-        </View>
-
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Status</Text>
-          <Text style={styles.infoValue}>{order.status}</Text>
-        </View>
-
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Platform</Text>
-          <Text style={styles.infoValue}>{order.platform}</Text>
-        </View>
-
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Order Number</Text>
-          <Text style={styles.infoValue}>
-            {order.orderNumber || "-"}
-          </Text>
-        </View>
-
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>TikTok Order ID</Text>
-          <Text style={styles.infoValue}>
-            {order.tiktokOrderId || "-"}
+        <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
+          <Text style={styles.infoLabel}>Order Identifier</Text>
+          <Text
+            selectable
+            style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}
+          >
+            {order.orderNumber || order.id}
           </Text>
         </View>
 
         {order.source === "TIKTOK" ? (
-          <View style={styles.infoRow}>
+          <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
+            <Text style={styles.infoLabel}>TikTok Order ID</Text>
+            <Text
+              selectable
+              style={[
+                styles.infoValue,
+                styles.longIdentifier,
+                isSmallScreen && styles.smallInfoValue,
+              ]}
+            >
+              {order.tiktokOrderId || "-"}
+            </Text>
+          </View>
+        ) : null}
+
+        <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
+          <Text style={styles.infoLabel}>Order Source</Text>
+          <Text
+            style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}
+          >
+            {order.source === "TIKTOK" ? "TikTok" : "Manual"}
+          </Text>
+        </View>
+
+        {order.source === "TIKTOK" ? (
+          <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
             <Text style={styles.infoLabel}>Import Status</Text>
             <Text
               style={[
@@ -506,6 +676,50 @@ export default function OrderDetailScreen() {
             </Text>
           </View>
         ) : null}
+
+        <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
+          <Text style={styles.infoLabel}>Order Status</Text>
+          <Text
+            style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}
+          >
+            {order.status}
+          </Text>
+        </View>
+
+        <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
+          <Text style={styles.infoLabel}>
+            {order.source === "TIKTOK" && order.importedAt
+              ? "Imported"
+              : "Created"}
+          </Text>
+          <Text
+            style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}
+          >
+            {formatOrderDate(
+              order.source === "TIKTOK" && order.importedAt
+                ? order.importedAt
+                : order.createdAt
+            )}
+          </Text>
+        </View>
+
+        <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
+          <Text style={styles.infoLabel}>Customer</Text>
+          <Text
+            style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}
+          >
+            {order.customerName || "No customer name"}
+          </Text>
+        </View>
+
+        <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
+          <Text style={styles.infoLabel}>Platform</Text>
+          <Text
+            style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}
+          >
+            {order.platform}
+          </Text>
+        </View>
       </View>
 
       {canCompleteImportedOrder ? (
@@ -515,6 +729,20 @@ export default function OrderDetailScreen() {
             Match this TikTok order with one or more local products.
           </Text>
 
+          <Text style={styles.label}>Search products</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by product name or SKU"
+            value={productSearch}
+            onChangeText={(value) => {
+              setProductSearch(value);
+              setFieldErrors((current) => ({ ...current, product: "" }));
+            }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            accessibilityLabel="Search products by name or SKU"
+          />
           <FieldError message={fieldErrors.product} />
 
           {loadingProducts ? (
@@ -527,80 +755,70 @@ export default function OrderDetailScreen() {
               <Text style={styles.productErrorText}>{productLoadError}</Text>
               <Pressable
                 style={styles.retryButton}
-                onPress={() => void loadProducts()}
+                onPress={() => void loadProducts(true)}
+                accessibilityRole="button"
               >
                 <Text style={styles.retryButtonText}>Retry</Text>
               </Pressable>
             </View>
-          ) : products.length === 0 ? (
+          ) : activeProducts.length === 0 ? (
             <Text style={styles.emptyText}>
               No active products are available.
             </Text>
+          ) : filteredProducts.length === 0 ? (
+            <Text style={styles.emptyText}>
+              No products match “{productSearch.trim()}”.
+            </Text>
           ) : (
             <View style={styles.productList}>
-              {products.map((product) => {
-                const isSelected = selectedProductId === product.id;
+              {filteredProducts.map((product) => {
+                const isAlreadySelected = selectedProductIds.has(product.id);
+                const isOutOfStock = product.stock < 1;
+                const isDisabled = isAlreadySelected || isOutOfStock;
 
                 return (
                   <Pressable
                     key={product.id}
                     style={[
                       styles.productOption,
-                      isSelected && styles.selectedProductOption,
+                      isDisabled && styles.disabledProductOption,
                     ]}
-                    onPress={() => {
-                      setSelectedProductId(product.id);
-                      setFieldErrors((current) => ({
-                        ...current,
-                        product: "",
-                      }));
-                    }}
+                    onPress={() => handleAddProduct(product)}
+                    disabled={isDisabled}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      isAlreadySelected
+                        ? `${product.name} is already added`
+                        : isOutOfStock
+                          ? `${product.name} is out of stock`
+                          : `Add ${product.name}, SKU ${product.sku}, ${product.stock} available`
+                    }
+                    accessibilityState={{ disabled: isDisabled }}
                   >
+                    <View style={styles.productResultContent}>
+                      <Text style={styles.productName}>{product.name}</Text>
+                      <Text style={styles.productMeta}>SKU: {product.sku}</Text>
+                      <Text style={styles.productMeta}>
+                        Available stock: {product.stock}
+                      </Text>
+                    </View>
                     <Text
                       style={[
-                        styles.productName,
-                        isSelected && styles.selectedProductText,
+                        styles.productActionText,
+                        isDisabled && styles.disabledProductActionText,
                       ]}
                     >
-                      {product.name}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.productMeta,
-                        isSelected && styles.selectedProductText,
-                      ]}
-                    >
-                      SKU: {product.sku} | Available stock: {product.stock}
+                      {isAlreadySelected
+                        ? "Added"
+                        : isOutOfStock
+                          ? "Out of stock"
+                          : "Add"}
                     </Text>
                   </Pressable>
                 );
               })}
             </View>
           )}
-
-          <Text style={styles.label}>Quantity</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Example: 1"
-            value={quantity}
-            onChangeText={(value) => {
-              setQuantity(value);
-              setFieldErrors((current) => ({
-                ...current,
-                quantity: "",
-              }));
-            }}
-            keyboardType="numeric"
-          />
-          <FieldError message={fieldErrors.quantity} />
-
-          <Pressable
-            style={styles.secondaryButton}
-            onPress={handleAddItem}
-            disabled={loadingProducts || Boolean(productLoadError)}
-          >
-            <Text style={styles.secondaryButtonText}>Add Item</Text>
-          </Pressable>
 
           <View style={styles.selectedItemsSection}>
             <Text style={styles.selectedItemsTitle}>Selected Items</Text>
@@ -609,50 +827,130 @@ export default function OrderDetailScreen() {
             {selectedItems.length === 0 ? (
               <Text style={styles.emptyText}>No products added yet.</Text>
             ) : (
-              selectedItems.map((item) => (
-                <View key={item.productId} style={styles.selectedItemCard}>
-                  <View style={styles.itemHeader}>
-                    <View style={styles.flexItem}>
-                      <Text style={styles.itemName}>{item.name}</Text>
-                      <Text style={styles.itemSku}>SKU: {item.sku}</Text>
+              selectedItems.map((item) => {
+                const currentProduct = products.find(
+                  (product) => product.id === item.productId
+                );
+                const availableStock = currentProduct?.stock ?? item.stock;
+                const itemError = selectedItemErrors.find(
+                  (error) => error.productId === item.productId
+                )?.message;
+                const cannotDecrease = item.quantity <= 1;
+                const cannotIncrease =
+                  Boolean(itemError) || item.quantity >= availableStock;
+
+                return (
+                  <View key={item.productId} style={styles.selectedItemCard}>
+                    <View style={styles.itemHeader}>
+                      <View style={styles.flexItem}>
+                        <Text style={styles.itemName}>{item.name}</Text>
+                        <Text style={styles.itemSku}>SKU: {item.sku}</Text>
+                        <Text style={styles.selectedItemMeta}>
+                          Available stock: {availableStock}
+                        </Text>
+                      </View>
+
+                      <Pressable
+                        style={styles.removeButton}
+                        onPress={() => handleRemoveItem(item.productId)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove ${item.name}`}
+                      >
+                        <Text style={styles.removeButtonText}>Remove</Text>
+                      </Pressable>
                     </View>
 
-                    <Pressable
-                      style={styles.removeButton}
-                      onPress={() => handleRemoveItem(item.productId)}
-                    >
-                      <Text style={styles.removeButtonText}>Remove</Text>
-                    </Pressable>
+                    <View style={styles.quantityRow}>
+                      <Text style={styles.quantityLabel}>Quantity</Text>
+                      <View style={styles.quantityControls}>
+                        <Pressable
+                          style={[
+                            styles.quantityButton,
+                            cannotDecrease && styles.disabledQuantityButton,
+                          ]}
+                          onPress={() =>
+                            handleChangeQuantity(item.productId, -1)
+                          }
+                          disabled={cannotDecrease}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Decrease quantity for ${item.name}`}
+                          accessibilityState={{ disabled: cannotDecrease }}
+                        >
+                          <Text style={styles.quantityButtonText}>−</Text>
+                        </Pressable>
+                        <Text
+                          style={styles.quantityValue}
+                          accessibilityLabel={`Quantity ${item.quantity}`}
+                        >
+                          {item.quantity}
+                        </Text>
+                        <Pressable
+                          style={[
+                            styles.quantityButton,
+                            cannotIncrease && styles.disabledQuantityButton,
+                          ]}
+                          onPress={() =>
+                            handleChangeQuantity(item.productId, 1)
+                          }
+                          disabled={cannotIncrease}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Increase quantity for ${item.name}`}
+                          accessibilityState={{ disabled: cannotIncrease }}
+                        >
+                          <Text style={styles.quantityButtonText}>+</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                    <FieldError message={itemError} />
                   </View>
-
-                  <Text style={styles.selectedItemMeta}>
-                    Quantity: {item.quantity}
-                  </Text>
-                  <Text style={styles.selectedItemMeta}>
-                    Available stock: {item.stock}
-                  </Text>
-                </View>
-              ))
+                );
+              })
             )}
           </View>
 
-          <Pressable
-            style={[
-              styles.completeButton,
-              submitting && styles.disabledButton,
-            ]}
-            onPress={handleCompleteOrder}
-            disabled={submitting}
-          >
-            {submitting ? (
-              <View style={styles.submittingContent}>
-                <ActivityIndicator color="#fff" size="small" />
-                <Text style={styles.completeButtonText}>Completing...</Text>
-              </View>
-            ) : (
-              <Text style={styles.completeButtonText}>Complete Order</Text>
-            )}
-          </Pressable>
+          <View style={styles.selectedSummary}>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Selected products</Text>
+              <Text style={styles.summaryValue}>{selectedItems.length}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Total units</Text>
+              <Text style={styles.summaryValue}>{totalSelectedUnits}</Text>
+            </View>
+            <View style={[styles.summaryRow, styles.estimatedTotalRow]}>
+              <Text style={styles.estimatedTotalLabel}>
+                Estimated order total
+              </Text>
+              <Text style={styles.estimatedTotalValue}>
+                RM {estimatedOrderTotal.toFixed(2)}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.completionActionArea}>
+            <Pressable
+              style={[
+                styles.completeButton,
+                completionDisabled && styles.disabledButton,
+              ]}
+              onPress={handleCompleteOrder}
+              disabled={completionDisabled}
+              accessibilityRole="button"
+              accessibilityState={{
+                disabled: completionDisabled,
+                busy: submitting,
+              }}
+            >
+              {submitting ? (
+                <View style={styles.submittingContent}>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.completeButtonText}>Completing...</Text>
+                </View>
+              ) : (
+                <Text style={styles.completeButtonText}>Complete Order</Text>
+              )}
+            </Pressable>
+          </View>
         </View>
       ) : null}
 
@@ -793,8 +1091,13 @@ export default function OrderDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     padding: 20,
+    paddingBottom: 32,
     backgroundColor: "#f6f6f6",
     flexGrow: 1,
+  },
+  smallScreenContainer: {
+    padding: 12,
+    paddingBottom: 28,
   },
   center: {
     flex: 1,
@@ -809,6 +1112,7 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: "900",
     marginBottom: 4,
+    flexShrink: 1,
   },
   subtitle: {
     fontSize: 14,
@@ -850,8 +1154,14 @@ const styles = StyleSheet.create({
   infoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "flex-start",
     gap: 12,
     marginBottom: 10,
+  },
+  smallInfoRow: {
+    flexDirection: "column",
+    gap: 4,
+    marginBottom: 14,
   },
   infoLabel: {
     color: "#666",
@@ -864,6 +1174,15 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "right",
     flex: 1,
+    flexShrink: 1,
+  },
+  smallInfoValue: {
+    textAlign: "left",
+    alignSelf: "stretch",
+    flex: 0,
+  },
+  longIdentifier: {
+    minWidth: 0,
   },
   importBadge: {
     fontSize: 12,
@@ -907,6 +1226,8 @@ const styles = StyleSheet.create({
   retryButton: {
     backgroundColor: UI.colors.ink,
     borderRadius: 8,
+    minHeight: 44,
+    justifyContent: "center",
     paddingVertical: 8,
     paddingHorizontal: 14,
   },
@@ -933,10 +1254,20 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     marginBottom: 10,
+    minHeight: 64,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
   },
-  selectedProductOption: {
-    backgroundColor: "#111",
-    borderColor: "#111",
+  disabledProductOption: {
+    backgroundColor: UI.colors.surfaceMuted,
+    borderColor: UI.colors.border,
+    opacity: 0.65,
+  },
+  productResultContent: {
+    flex: 1,
+    minWidth: 0,
   },
   productName: {
     fontSize: 14,
@@ -947,9 +1278,15 @@ const styles = StyleSheet.create({
   productMeta: {
     fontSize: 12,
     color: "#666",
+    lineHeight: 18,
   },
-  selectedProductText: {
-    color: "#fff",
+  productActionText: {
+    color: UI.colors.primary,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  disabledProductActionText: {
+    color: UI.colors.inkMuted,
   },
   label: {
     fontSize: 13,
@@ -957,26 +1294,14 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     color: "#333",
   },
-  input: {
+  searchInput: {
     backgroundColor: "#fff",
     borderWidth: 1,
     borderColor: "#ddd",
     borderRadius: 10,
     padding: 12,
     fontSize: 14,
-  },
-  secondaryButton: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#111",
-    borderRadius: 10,
-    padding: 12,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  secondaryButtonText: {
-    color: "#111",
-    fontWeight: "900",
+    minHeight: 44,
   },
   selectedItemsSection: {
     borderTopWidth: 1,
@@ -1012,6 +1337,8 @@ const styles = StyleSheet.create({
   removeButton: {
     backgroundColor: "#ffecec",
     borderRadius: 8,
+    minHeight: 44,
+    justifyContent: "center",
     paddingVertical: 8,
     paddingHorizontal: 10,
     alignSelf: "flex-start",
@@ -1021,12 +1348,101 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 12,
   },
+  quantityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginTop: 4,
+  },
+  quantityLabel: {
+    color: "#333",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  quantityControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  quantityButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
+    backgroundColor: UI.colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  disabledQuantityButton: {
+    backgroundColor: UI.colors.surfaceMuted,
+    opacity: 0.45,
+  },
+  quantityButtonText: {
+    color: UI.colors.ink,
+    fontSize: 22,
+    fontWeight: "800",
+    lineHeight: 24,
+  },
+  quantityValue: {
+    minWidth: 36,
+    textAlign: "center",
+    color: UI.colors.ink,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  selectedSummary: {
+    backgroundColor: UI.colors.surfaceMuted,
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 4,
+  },
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 8,
+  },
+  summaryLabel: {
+    color: UI.colors.inkMuted,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  summaryValue: {
+    color: UI.colors.ink,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  estimatedTotalRow: {
+    borderTopWidth: 1,
+    borderTopColor: UI.colors.border,
+    marginBottom: 0,
+    paddingTop: 10,
+  },
+  estimatedTotalLabel: {
+    color: UI.colors.ink,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  estimatedTotalValue: {
+    color: UI.colors.ink,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  completionActionArea: {
+    borderTopWidth: 1,
+    borderTopColor: UI.colors.border,
+    marginTop: 14,
+    paddingTop: 14,
+  },
   completeButton: {
     backgroundColor: "#111",
     borderRadius: 10,
-    padding: 14,
+    minHeight: 48,
+    padding: 12,
     alignItems: "center",
-    marginTop: 4,
+    justifyContent: "center",
   },
   completeButtonText: {
     color: "#fff",
@@ -1084,8 +1500,10 @@ const styles = StyleSheet.create({
   actionButton: {
     backgroundColor: "#111",
     borderRadius: 10,
+    minHeight: 44,
     padding: 12,
     alignItems: "center",
+    justifyContent: "center",
   },
   actionButtonText: {
     color: "#fff",
@@ -1094,8 +1512,10 @@ const styles = StyleSheet.create({
   dangerButton: {
     backgroundColor: "#ffecec",
     borderRadius: 10,
+    minHeight: 44,
     padding: 12,
     alignItems: "center",
+    justifyContent: "center",
   },
   dangerButtonText: {
     color: "#cc3333",
@@ -1104,14 +1524,16 @@ const styles = StyleSheet.create({
   warningButton: {
     backgroundColor: "#fff4d6",
     borderRadius: 10,
+    minHeight: 44,
     padding: 12,
     alignItems: "center",
+    justifyContent: "center",
   },
   warningButtonText: {
     color: "#8a5a00",
     fontWeight: "900",
   },
   disabledButton: {
-    opacity: 0.6,
+    opacity: 0.45,
   },
 });
