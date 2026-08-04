@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Platform,
@@ -7,18 +7,40 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
 import { getMonthlyReport, MonthlyReport } from "../../api/reports";
+import { EmptyState } from "../../components/EmptyState";
 import { useFocusEffect } from "expo-router";
 import { UI } from "../../constants/ui";
 import { FloatingBackToTop } from "../../components/FloatingBackToTop";
 
 const formatRM = (value: number) => {
-  return `RM ${value.toFixed(2)}`;
+  return Number.isFinite(value) ? `RM ${value.toFixed(2)}` : "—";
 };
+
+const formatPercentage = (value: number | null) => {
+  return value !== null && Number.isFinite(value)
+    ? `${value.toFixed(1)}%`
+    : "—";
+};
+
+type ReportSection = "overview" | "product-performance";
+type ProductSort =
+  | "best-selling"
+  | "highest-revenue"
+  | "most-profitable"
+  | "lowest-selling";
+
+const productSortOptions: { key: ProductSort; label: string }[] = [
+  { key: "best-selling", label: "Best Selling" },
+  { key: "highest-revenue", label: "Highest Revenue" },
+  { key: "most-profitable", label: "Most Profitable" },
+  { key: "lowest-selling", label: "Lowest Selling" },
+];
 
 const monthNames = [
   "January",
@@ -37,11 +59,16 @@ const monthNames = [
 
 export default function ReportsScreen() {
   const now = new Date();
+  const { width } = useWindowDimensions();
+  const isWideLayout = width >= 720;
 
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
 
   const [report, setReport] = useState<MonthlyReport | null>(null);
+  const [section, setSection] = useState<ReportSection>("overview");
+  const [productSort, setProductSort] =
+    useState<ProductSort>("best-selling");
   const [netProfitDifference, setNetProfitDifference] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -49,7 +76,7 @@ export default function ReportsScreen() {
   const [showBackToTop, setShowBackToTop] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
-  const loadReport = async () => {
+  const loadReport = useCallback(async () => {
     try {
       setError(null);
 
@@ -69,19 +96,19 @@ export default function ReportsScreen() {
             : 100
           : ((currentNetProfit - previousNetProfit) / Math.abs(previousNetProfit)) * 100
       );
-    } catch (err) {
+    } catch {
       setError("Failed to load monthly report");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [month, year]);
 
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
       loadReport();
-    }, [year, month])
+    }, [loadReport])
   );
 
   const onRefresh = () => {
@@ -108,6 +135,42 @@ export default function ReportsScreen() {
 
     setMonth(month + 1);
   };
+
+  const sortedProducts = useMemo(() => {
+    const products = [...(report?.productPerformance.products ?? [])];
+
+    return products.sort((a, b) => {
+      if (productSort === "highest-revenue") {
+        return (
+          b.netRevenue - a.netRevenue ||
+          b.unitsSold - a.unitsSold ||
+          a.name.localeCompare(b.name)
+        );
+      }
+
+      if (productSort === "most-profitable") {
+        return (
+          b.grossProfit - a.grossProfit ||
+          b.netRevenue - a.netRevenue ||
+          a.name.localeCompare(b.name)
+        );
+      }
+
+      if (productSort === "lowest-selling") {
+        return (
+          a.unitsSold - b.unitsSold ||
+          a.netRevenue - b.netRevenue ||
+          a.name.localeCompare(b.name)
+        );
+      }
+
+      return (
+        b.unitsSold - a.unitsSold ||
+        b.netRevenue - a.netRevenue ||
+        a.name.localeCompare(b.name)
+      );
+    });
+  }, [productSort, report]);
 
   if (loading) {
     return (
@@ -291,6 +354,72 @@ export default function ReportsScreen() {
     URL.revokeObjectURL(url);
   };
 
+  const handleExportProductPerformanceCsv = () => {
+    if (!report) {
+      Alert.alert("Error", "No report data to export.");
+      return;
+    }
+
+    if (Platform.OS !== "web") {
+      Alert.alert(
+        "Export not available",
+        "Product Performance CSV export is currently available on the web version only."
+      );
+      return;
+    }
+
+    const rows: unknown[][] = [
+      ["TikTok Sales Tracker Product Performance Report"],
+      ["Year", report.period.year],
+      ["Month", report.period.month],
+      ["Start Date", report.period.startDate],
+      ["End Date", report.period.endDate],
+      ["Profit basis", "Historical cost stored on each order item"],
+      [],
+      [
+        "Product name",
+        "SKU",
+        "Units sold",
+        "Order count",
+        "Gross revenue",
+        "Discount amount",
+        "Net revenue",
+        "Average selling price",
+        "Gross profit",
+        "Profit margin (%)",
+      ],
+      ...sortedProducts.map((product) => [
+        product.name,
+        product.sku,
+        product.unitsSold,
+        product.orderCount,
+        product.grossRevenue.toFixed(2),
+        product.discountAmount.toFixed(2),
+        product.netRevenue.toFixed(2),
+        product.averageSellingPrice.toFixed(2),
+        product.grossProfit.toFixed(2),
+        product.profitMargin?.toFixed(2) ?? "",
+      ]),
+    ];
+
+    const csv = buildCsv(rows);
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = `product-performance-${report.period.year}-${String(
+      report.period.month
+    ).padStart(2, "0")}.csv`;
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <View style={styles.screenShell}>
     <ScrollView
@@ -310,6 +439,48 @@ export default function ReportsScreen() {
         <Text style={styles.subtitle}>Revenue, profit, and operating insights</Text>
       </View>
 
+      <View style={styles.sectionControls} accessibilityRole="tablist">
+        <Pressable
+          accessibilityRole="tab"
+          accessibilityState={{ selected: section === "overview" }}
+          style={[
+            styles.sectionControl,
+            section === "overview" && styles.sectionControlActive,
+          ]}
+          onPress={() => setSection("overview")}
+        >
+          <Text
+            style={[
+              styles.sectionControlText,
+              section === "overview" && styles.sectionControlTextActive,
+            ]}
+          >
+            Overview
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="tab"
+          accessibilityState={{
+            selected: section === "product-performance",
+          }}
+          style={[
+            styles.sectionControl,
+            section === "product-performance" && styles.sectionControlActive,
+          ]}
+          onPress={() => setSection("product-performance")}
+        >
+          <Text
+            style={[
+              styles.sectionControlText,
+              section === "product-performance" &&
+                styles.sectionControlTextActive,
+            ]}
+          >
+            Product Performance
+          </Text>
+        </Pressable>
+      </View>
+
       <View style={styles.monthControls}>
         <Pressable style={styles.monthButton} onPress={goPreviousMonth}>
           <Text style={styles.monthButtonText}>←</Text>
@@ -323,6 +494,8 @@ export default function ReportsScreen() {
         </Pressable>
       </View>
 
+      {section === "overview" ? (
+      <>
       <View style={styles.exportPanel}>
         <Text style={styles.exportPanelTitle}>Export data</Text>
         <View style={styles.exportActions}>
@@ -481,6 +654,245 @@ export default function ReportsScreen() {
           ))
         )}
       </View>
+      </>
+      ) : (
+      <>
+        <View style={styles.exportPanel}>
+          <Text style={styles.exportPanelTitle}>Export data</Text>
+          <Pressable
+            style={styles.exportButton}
+            onPress={handleExportProductPerformanceCsv}
+          >
+            <Text style={styles.exportButtonText}>
+              Product performance · {monthNames[month - 1]} {year}
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.productIntroCard}>
+          <Text style={styles.sectionTitle}>Product Performance</Text>
+          <Text style={styles.productIntroText}>
+            Line-item sales and gross profit for {monthNames[month - 1]} {year}.
+          </Text>
+
+          <View style={styles.productSummaryGrid}>
+            <View
+              style={[
+                styles.productSummaryMetric,
+                isWideLayout && styles.productSummaryMetricWide,
+              ]}
+            >
+              <Text style={styles.productMetricLabel}>Total products sold</Text>
+              <Text style={styles.productMetricValue}>
+                {report.productPerformance.summary.productCount}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.productSummaryMetric,
+                isWideLayout && styles.productSummaryMetricWide,
+              ]}
+            >
+              <Text style={styles.productMetricLabel}>Total units sold</Text>
+              <Text style={styles.productMetricValue}>
+                {report.productPerformance.summary.unitsSold}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.productSummaryMetric,
+                isWideLayout && styles.productSummaryMetricWide,
+              ]}
+            >
+              <Text style={styles.productMetricLabel}>Gross revenue</Text>
+              <Text style={styles.productMetricValueSmall}>
+                {formatRM(report.productPerformance.summary.grossRevenue)}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.productSummaryMetric,
+                isWideLayout && styles.productSummaryMetricWide,
+              ]}
+            >
+              <Text style={styles.productMetricLabel}>Discounts</Text>
+              <Text style={styles.productMetricValueSmall}>
+                {formatRM(report.productPerformance.summary.discountAmount)}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.productSummaryMetric,
+                isWideLayout && styles.productSummaryMetricWide,
+              ]}
+            >
+              <Text style={styles.productMetricLabel}>Net revenue</Text>
+              <Text style={styles.productMetricValueSmall}>
+                {formatRM(report.productPerformance.summary.netRevenue)}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.productSummaryMetric,
+                isWideLayout && styles.productSummaryMetricWide,
+              ]}
+            >
+              <Text style={styles.productMetricLabel}>Gross profit</Text>
+              <Text style={styles.productMetricValueSmall}>
+                {formatRM(report.productPerformance.summary.grossProfit)}
+              </Text>
+            </View>
+          </View>
+
+          {report.productPerformance.highlights.bestSellingProduct &&
+          report.productPerformance.highlights.highestRevenueProduct ? (
+            <View style={styles.productHighlights}>
+              <View style={styles.productHighlightItem}>
+                <Text style={styles.productHighlightLabel}>Best-selling product</Text>
+                <Text style={styles.productHighlightName}>
+                  {report.productPerformance.highlights.bestSellingProduct.name}
+                </Text>
+                <Text style={styles.itemSubtitle}>
+                  {report.productPerformance.highlights.bestSellingProduct.unitsSold} units
+                </Text>
+              </View>
+              <View style={styles.productHighlightItem}>
+                <Text style={styles.productHighlightLabel}>Highest-revenue product</Text>
+                <Text style={styles.productHighlightName}>
+                  {report.productPerformance.highlights.highestRevenueProduct.name}
+                </Text>
+                <Text style={styles.itemSubtitle}>
+                  {formatRM(
+                    report.productPerformance.highlights.highestRevenueProduct
+                      .netRevenue
+                  )}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          <Text style={styles.profitAccuracyText}>
+            Discounts are allocated proportionally to gross line revenue. Gross
+            profit uses historical item cost; shipping fees are not allocated to
+            products.
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Products</Text>
+          <View style={styles.sortControls}>
+            {productSortOptions.map((option) => (
+              <Pressable
+                key={option.key}
+                style={[
+                  styles.sortButton,
+                  productSort === option.key && styles.sortButtonActive,
+                ]}
+                onPress={() => setProductSort(option.key)}
+              >
+                <Text
+                  style={[
+                    styles.sortButtonText,
+                    productSort === option.key && styles.sortButtonTextActive,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {sortedProducts.length === 0 ? (
+            <EmptyState
+              title="No product sales were recorded for this period."
+              message="Choose another month to review product performance."
+            />
+          ) : (
+            <View style={styles.productGrid}>
+              {sortedProducts.map((product) => (
+                <View
+                  key={product.productId}
+                  style={[
+                    styles.productCard,
+                    isWideLayout && styles.productCardWide,
+                  ]}
+                >
+                  <View style={styles.productCardHeader}>
+                    <View style={styles.flexItem}>
+                      <Text style={styles.itemTitle}>{product.name}</Text>
+                      <Text style={styles.itemSubtitle}>SKU: {product.sku}</Text>
+                    </View>
+                    {!product.isActive ? (
+                      <View style={styles.inactiveBadge}>
+                        <Text style={styles.inactiveBadgeText}>Inactive</Text>
+                      </View>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.productPrimaryMetrics}>
+                    <View style={styles.productPrimaryMetric}>
+                      <Text style={styles.productMetricLabel}>Units sold</Text>
+                      <Text style={styles.productMetricValue}>
+                        {product.unitsSold}
+                      </Text>
+                    </View>
+                    <View style={styles.productPrimaryMetric}>
+                      <Text style={styles.productMetricLabel}>Net revenue</Text>
+                      <Text style={styles.productMetricValueSmall}>
+                        {formatRM(product.netRevenue)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.productDetailGrid}>
+                    <View style={styles.productDetailMetric}>
+                      <Text style={styles.productDetailLabel}>Orders</Text>
+                      <Text style={styles.productDetailValue}>{product.orderCount}</Text>
+                    </View>
+                    <View style={styles.productDetailMetric}>
+                      <Text style={styles.productDetailLabel}>Avg. net price</Text>
+                      <Text style={styles.productDetailValue}>
+                        {formatRM(product.averageSellingPrice)}
+                      </Text>
+                    </View>
+                    <View style={styles.productDetailMetric}>
+                      <Text style={styles.productDetailLabel}>Gross revenue</Text>
+                      <Text style={styles.productDetailValue}>
+                        {formatRM(product.grossRevenue)}
+                      </Text>
+                    </View>
+                    <View style={styles.productDetailMetric}>
+                      <Text style={styles.productDetailLabel}>Discounts</Text>
+                      <Text style={styles.productDetailValue}>
+                        {formatRM(product.discountAmount)}
+                      </Text>
+                    </View>
+                    <View style={styles.productDetailMetric}>
+                      <Text style={styles.productDetailLabel}>Gross profit</Text>
+                      <Text
+                        style={
+                          product.grossProfit >= 0
+                            ? styles.productProfitValue
+                            : styles.productLossValue
+                        }
+                      >
+                        {formatRM(product.grossProfit)}
+                      </Text>
+                    </View>
+                    <View style={styles.productDetailMetric}>
+                      <Text style={styles.productDetailLabel}>Margin</Text>
+                      <Text style={styles.productDetailValue}>
+                        {formatPercentage(product.profitMargin)}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      </>
+      )}
     </ScrollView>
     <FloatingBackToTop
       visible={showBackToTop}
@@ -538,6 +950,34 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   pageHeader: { marginBottom: 22 },
+  sectionControls: {
+    flexDirection: "row",
+    padding: 4,
+    marginBottom: 14,
+    borderRadius: UI.radius.medium,
+    backgroundColor: UI.colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
+  },
+  sectionControl: {
+    flex: 1,
+    minHeight: 40,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: UI.radius.small,
+  },
+  sectionControlActive: {
+    backgroundColor: UI.colors.surface,
+    ...UI.shadow,
+  },
+  sectionControlText: {
+    color: UI.colors.inkMuted,
+    fontSize: 13,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  sectionControlTextActive: { color: UI.colors.primary },
   eyebrow: { color: UI.colors.primary, fontSize: 11, fontWeight: "800", letterSpacing: 1.5, marginBottom: 5 },
   monthControls: {
     flexDirection: "row",
@@ -717,5 +1157,188 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 12,
     fontWeight: "700",
+  },
+  productIntroCard: {
+    backgroundColor: UI.colors.surface,
+    borderRadius: UI.radius.large,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
+    ...UI.shadow,
+  },
+  productIntroText: {
+    marginTop: -6,
+    marginBottom: 16,
+    color: UI.colors.inkMuted,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  productSummaryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  productSummaryMetric: {
+    width: "48%",
+    minWidth: 130,
+    flexGrow: 1,
+    backgroundColor: UI.colors.surfaceMuted,
+    borderRadius: UI.radius.medium,
+    padding: 14,
+  },
+  productSummaryMetricWide: {
+    width: "23%",
+    minWidth: 140,
+  },
+  productMetricLabel: {
+    color: UI.colors.inkMuted,
+    fontSize: 11,
+    fontWeight: "700",
+    marginBottom: 5,
+  },
+  productMetricValue: {
+    color: UI.colors.ink,
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  productMetricValueSmall: {
+    color: UI.colors.ink,
+    fontSize: 17,
+    fontWeight: "800",
+  },
+  productHighlights: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 14,
+  },
+  productHighlightItem: {
+    flex: 1,
+    minWidth: 220,
+    padding: 14,
+    borderRadius: UI.radius.medium,
+    borderWidth: 1,
+    borderColor: "#FBC5CF",
+    backgroundColor: UI.colors.primarySoft,
+  },
+  productHighlightLabel: {
+    color: UI.colors.primary,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    marginBottom: 5,
+    textTransform: "uppercase",
+  },
+  productHighlightName: {
+    color: UI.colors.ink,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  profitAccuracyText: {
+    color: UI.colors.inkMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 14,
+  },
+  sortControls: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 4,
+  },
+  sortButton: {
+    minHeight: 36,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    borderRadius: UI.radius.pill,
+    backgroundColor: UI.colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
+  },
+  sortButtonActive: {
+    backgroundColor: UI.colors.ink,
+    borderColor: UI.colors.ink,
+  },
+  sortButtonText: {
+    color: UI.colors.inkMuted,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  sortButtonTextActive: { color: "#fff" },
+  productGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 12,
+  },
+  productCard: {
+    width: "100%",
+    borderWidth: 1,
+    borderColor: UI.colors.border,
+    borderRadius: UI.radius.medium,
+    padding: 15,
+    backgroundColor: UI.colors.surfaceMuted,
+  },
+  productCardWide: {
+    width: "48%",
+    flexGrow: 1,
+  },
+  productCardHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  inactiveBadge: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: UI.radius.pill,
+    backgroundColor: UI.colors.warningSoft,
+  },
+  inactiveBadgeText: {
+    color: UI.colors.warning,
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  productPrimaryMetrics: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 14,
+  },
+  productPrimaryMetric: {
+    flex: 1,
+    minWidth: 0,
+    padding: 12,
+    borderRadius: UI.radius.small,
+    backgroundColor: UI.colors.surface,
+  },
+  productDetailGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 12,
+  },
+  productDetailMetric: {
+    width: "50%",
+    paddingVertical: 7,
+    paddingRight: 8,
+  },
+  productDetailLabel: {
+    color: UI.colors.inkMuted,
+    fontSize: 11,
+    marginBottom: 3,
+  },
+  productDetailValue: {
+    color: UI.colors.ink,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  productProfitValue: {
+    color: UI.colors.success,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  productLossValue: {
+    color: UI.colors.danger,
+    fontSize: 13,
+    fontWeight: "800",
   },
 });

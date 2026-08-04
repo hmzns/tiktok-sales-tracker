@@ -26,6 +26,12 @@ import { FieldError } from "../components/FieldError";
 import { LoadingState } from "../components/LoadingState";
 import { UI } from "../constants/ui";
 import { showSuccessMessage } from "../utils/showSuccessMessage";
+import {
+  buildCompletionConfirmationMessage,
+  calculateOrderDiscountPreview,
+  DISCOUNT_OPTIONS,
+  DiscountType,
+} from "../utils/orderDiscount";
 
 type SelectedImportedOrderItem = {
   productId: string;
@@ -83,6 +89,10 @@ const getCompletionErrorMessage = (error: unknown) => {
     return "This order could not be found.";
   }
 
+  if (/discount|subtotal/i.test(message)) {
+    return message;
+  }
+
   if (status === 400) {
     return "Please review the selected products and quantities, then try again.";
   }
@@ -130,6 +140,8 @@ export default function OrderDetailScreen() {
   const [selectedItems, setSelectedItems] = useState<
     SelectedImportedOrderItem[]
   >([]);
+  const [discountType, setDiscountType] = useState<DiscountType>("NONE");
+  const [discountValue, setDiscountValue] = useState("0");
   const [fieldErrors, setFieldErrors] = useState({
     product: "",
     selectedItems: "",
@@ -333,11 +345,17 @@ export default function OrderDetailScreen() {
     },
     0
   );
-  const estimatedOrderTotal = order
-    ? estimatedSubtotal - order.discount + order.shippingFee
-    : estimatedSubtotal;
+  const discountPreview = calculateOrderDiscountPreview({
+    subtotal: estimatedSubtotal,
+    shippingFee: order?.shippingFee ?? 0,
+    type: discountType,
+    value: discountValue,
+  });
   const completionDisabled =
-    selectedItems.length === 0 || hasInvalidSelection || submitting;
+    selectedItems.length === 0 ||
+    hasInvalidSelection ||
+    !discountPreview.isValid ||
+    submitting;
 
   const handleAddProduct = (product: Product) => {
     if (!product.isActive) {
@@ -424,7 +442,11 @@ export default function OrderDetailScreen() {
       return;
     }
 
-    if (selectedItems.length === 0 || hasInvalidSelection) {
+    if (
+      selectedItems.length === 0 ||
+      hasInvalidSelection ||
+      !discountPreview.isValid
+    ) {
       setFieldErrors((current) => ({
         ...current,
         selectedItems:
@@ -447,10 +469,16 @@ export default function OrderDetailScreen() {
 
       const completedOrder = await completeImportedOrder(
         orderId,
-        selectedItems.map((item) => ({
-          productId: item.productId,
-          quantity: item.quantity,
-        }))
+        {
+          discount: {
+            type: discountType,
+            value: discountPreview.enteredValue,
+          },
+          items: selectedItems.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+          })),
+        }
       );
 
       const refreshedOrder = await loadOrder(false);
@@ -469,6 +497,8 @@ export default function OrderDetailScreen() {
 
       setOrder(latestCompletedOrder);
       setSelectedItems([]);
+      setDiscountType("NONE");
+      setDiscountValue("0");
       setProductSearch("");
       setFieldErrors({ product: "", selectedItems: "" });
 
@@ -511,8 +541,9 @@ export default function OrderDetailScreen() {
       return;
     }
 
-    const confirmationMessage =
-      "Complete this order and deduct the selected quantities from stock?";
+    const confirmationMessage = buildCompletionConfirmationMessage(
+      discountPreview.finalTotal
+    );
 
     confirmationOpenRef.current = true;
 
@@ -602,6 +633,7 @@ export default function OrderDetailScreen() {
       ]}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
+      automaticallyAdjustKeyboardInsets
     >
       <Text style={styles.title}>
         {order.orderNumber || order.id}
@@ -908,6 +940,69 @@ export default function OrderDetailScreen() {
             )}
           </View>
 
+          <View style={styles.discountSection}>
+            <Text style={styles.selectedItemsTitle}>Discount</Text>
+            <View style={styles.discountOptions}>
+              {DISCOUNT_OPTIONS.map((option) => (
+                <Pressable
+                  key={option.type}
+                  style={[
+                    styles.discountOption,
+                    discountType === option.type &&
+                      styles.discountOptionActive,
+                  ]}
+                  onPress={() => {
+                    setDiscountType(option.type);
+                    setDiscountValue("0");
+                    setCompletionError("");
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{
+                    selected: discountType === option.type,
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.discountOptionText,
+                      discountType === option.type &&
+                        styles.discountOptionTextActive,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {discountType !== "NONE" ? (
+              <>
+                <Text style={styles.label}>
+                  {discountType === "FIXED"
+                    ? "Discount amount (RM)"
+                    : "Discount percentage (%)"}
+                </Text>
+                <TextInput
+                  style={styles.searchInput}
+                  value={discountValue}
+                  onChangeText={(value) => {
+                    setDiscountValue(value);
+                    setCompletionError("");
+                  }}
+                  placeholder={
+                    discountType === "FIXED" ? "Example: 10.00" : "Example: 10"
+                  }
+                  keyboardType="decimal-pad"
+                  accessibilityLabel={
+                    discountType === "FIXED"
+                      ? "Fixed discount amount in Ringgit"
+                      : "Discount percentage"
+                  }
+                />
+              </>
+            ) : null}
+            <FieldError message={discountPreview.error} />
+          </View>
+
           <View style={styles.selectedSummary}>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Selected products</Text>
@@ -917,12 +1012,22 @@ export default function OrderDetailScreen() {
               <Text style={styles.summaryLabel}>Total units</Text>
               <Text style={styles.summaryValue}>{totalSelectedUnits}</Text>
             </View>
-            <View style={[styles.summaryRow, styles.estimatedTotalRow]}>
-              <Text style={styles.estimatedTotalLabel}>
-                Estimated order total
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Subtotal</Text>
+              <Text style={styles.summaryValue}>
+                RM {discountPreview.subtotal.toFixed(2)}
               </Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Discount</Text>
+              <Text style={styles.summaryValue}>
+                RM {discountPreview.discountAmount.toFixed(2)}
+              </Text>
+            </View>
+            <View style={[styles.summaryRow, styles.estimatedTotalRow]}>
+              <Text style={styles.estimatedTotalLabel}>Final total</Text>
               <Text style={styles.estimatedTotalValue}>
-                RM {estimatedOrderTotal.toFixed(2)}
+                RM {discountPreview.finalTotal.toFixed(2)}
               </Text>
             </View>
           </View>
@@ -983,11 +1088,29 @@ export default function OrderDetailScreen() {
               </View>
 
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Line Total</Text>
+                <Text style={styles.infoLabel}>Gross Line Revenue</Text>
                 <Text style={styles.infoValue}>
                   RM {item.lineTotal.toFixed(2)}
                 </Text>
               </View>
+
+              {item.allocatedDiscount !== null ? (
+                <>
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Allocated Discount</Text>
+                    <Text style={styles.infoValue}>
+                      RM {item.allocatedDiscount.toFixed(2)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Net Line Revenue</Text>
+                    <Text style={styles.infoValue}>
+                      RM {(item.lineTotal - item.allocatedDiscount).toFixed(2)}
+                    </Text>
+                  </View>
+                </>
+              ) : null}
 
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Line Profit</Text>
@@ -1011,7 +1134,11 @@ export default function OrderDetailScreen() {
         </View>
 
         <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Discount</Text>
+          <Text style={styles.infoLabel}>
+            {order.discountType === "PERCENTAGE"
+              ? `Discount (${order.discountValue}%)`
+              : "Discount"}
+          </Text>
           <Text style={styles.infoValue}>
             RM {order.discount.toFixed(2)}
           </Text>
@@ -1309,6 +1436,37 @@ const styles = StyleSheet.create({
     marginTop: 18,
     paddingTop: 16,
   },
+  discountSection: {
+    borderTopWidth: 1,
+    borderTopColor: UI.colors.border,
+    marginTop: 18,
+    paddingTop: 16,
+  },
+  discountOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 14,
+  },
+  discountOption: {
+    minHeight: 40,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    borderRadius: UI.radius.pill,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
+    backgroundColor: UI.colors.surfaceMuted,
+  },
+  discountOptionActive: {
+    backgroundColor: UI.colors.ink,
+    borderColor: UI.colors.ink,
+  },
+  discountOptionText: {
+    color: UI.colors.inkMuted,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  discountOptionTextActive: { color: "#fff" },
   selectedItemsTitle: {
     fontSize: 16,
     fontWeight: "900",

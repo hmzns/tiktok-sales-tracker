@@ -8,7 +8,10 @@ import {
   updateOrderStatus,
 } from "../src/services/order.service";
 import { AppError } from "../src/utils/AppError";
-import { completeImportedOrderSchema } from "../src/validators/order.validator";
+import {
+  completeImportedOrderSchema,
+  createOrderSchema,
+} from "../src/validators/order.validator";
 
 type TestProduct = {
   id: string;
@@ -25,6 +28,8 @@ type TestOrder = {
   source: "MANUAL" | "TIKTOK";
   importStatus: "NEEDS_ITEMS" | "READY" | "IMPORT_FAILED";
   stockProcessed: boolean;
+  discountType: "NONE" | "FIXED" | "PERCENTAGE";
+  discountValue: number;
   discount: number;
   shippingFee: number;
   subtotal: number;
@@ -41,6 +46,7 @@ type TestOrderItem = {
   sellPrice: number;
   costPrice: number;
   lineTotal: number;
+  allocatedDiscount: number | null;
   lineCost: number;
   lineProfit: number;
 };
@@ -68,7 +74,9 @@ const makeOrder = (overrides: Partial<TestOrder> = {}): TestOrder => ({
   source: "TIKTOK",
   importStatus: "NEEDS_ITEMS",
   stockProcessed: false,
-  discount: 1,
+  discountType: "NONE",
+  discountValue: 0,
+  discount: 0,
   shippingFee: 2,
   subtotal: 0,
   total: 0,
@@ -222,6 +230,20 @@ test("completion validation rejects empty items, duplicates, and invalid prices"
   );
   assert.equal(
     completeImportedOrderSchema.safeParse({
+      items: [{ productId: "product-1", quantity: 1 }],
+      discount: { type: "PERCENTAGE", value: 101 },
+    }).success,
+    false
+  );
+  assert.equal(
+    completeImportedOrderSchema.safeParse({
+      items: [{ productId: "product-1", quantity: 1 }],
+      discount: { type: "FIXED", value: -1 },
+    }).success,
+    false
+  );
+  assert.equal(
+    completeImportedOrderSchema.safeParse({
       items: [
         { productId: "product-1", quantity: 1 },
         { productId: "product-1", quantity: 2 },
@@ -241,6 +263,23 @@ test("completion validation rejects empty items, duplicates, and invalid prices"
     }).success,
     false
   );
+});
+
+test("manual-order validation accepts typed discounts and normalizes legacy fixed amounts", () => {
+  const percentage = createOrderSchema.parse({
+    items: [{ productId: "product-1", quantity: 1 }],
+    discount: { type: "PERCENTAGE", value: 10 },
+  });
+  const legacyFixed = createOrderSchema.parse({
+    items: [{ productId: "product-1", quantity: 1 }],
+    discount: 5,
+  });
+
+  assert.deepEqual(percentage.discount, {
+    type: "PERCENTAGE",
+    value: 10,
+  });
+  assert.deepEqual(legacyFixed.discount, { type: "FIXED", value: 5 });
 });
 
 test("missing orders return a clear not-found error", async () => {
@@ -293,9 +332,13 @@ test("completes a TikTok import with one item, totals, stock, and movement", asy
     },
   ]);
   assert.equal(state.order.subtotal, 20);
-  assert.equal(state.order.total, 21);
+  assert.equal(state.order.discountType, "NONE");
+  assert.equal(state.order.discountValue, 0);
+  assert.equal(state.order.discount, 0);
+  assert.equal(state.items[0].allocatedDiscount, 0);
+  assert.equal(state.order.total, 22);
   assert.equal(state.order.totalCost, 8);
-  assert.equal(state.order.profit, 13);
+  assert.equal(state.order.profit, 14);
   assert.equal(state.order.importStatus, "READY");
   assert.equal(state.order.stockProcessed, true);
   assert.equal("rawImportData" in (result as object), false);
@@ -304,7 +347,7 @@ test("completes a TikTok import with one item, totals, stock, and movement", asy
 
 test("completes a TikTok import with multiple items and a sell-price override", async () => {
   const harness = createHarness({
-    order: makeOrder({ discount: 0, shippingFee: 0 }),
+    order: makeOrder({ shippingFee: 0 }),
     products: [
       makeProduct("product-1"),
       makeProduct("product-2", { costPrice: 3, sellPrice: 8, stock: 5 }),
@@ -334,6 +377,193 @@ test("completes a TikTok import with multiple items and a sell-price override", 
   assert.equal(state.order.subtotal, 48);
   assert.equal(state.order.totalCost, 17);
   assert.equal(state.order.profit, 31);
+});
+
+test("persists and proportionally allocates a fixed discount", async () => {
+  const harness = createHarness({
+    order: makeOrder({ shippingFee: 0 }),
+    products: [
+      makeProduct("product-1", { sellPrice: 10 }),
+      makeProduct("product-2", { sellPrice: 10 }),
+    ],
+    items: [],
+    movements: [],
+  });
+
+  await completeImportedOrder(
+    "order-1",
+    {
+      discount: { type: "FIXED", value: 5 },
+      items: [
+        { productId: "product-1", quantity: 2 },
+        { productId: "product-2", quantity: 3 },
+      ],
+    },
+    harness.runTransaction
+  );
+  const state = harness.getState();
+
+  assert.equal(state.order.discountType, "FIXED");
+  assert.equal(state.order.discountValue, 5);
+  assert.equal(state.order.discount, 5);
+  assert.equal(state.order.subtotal, 50);
+  assert.equal(state.order.total, 45);
+  assert.deepEqual(
+    state.items.map((item) => item.allocatedDiscount),
+    [2, 3]
+  );
+  assert.equal(
+    state.items.reduce(
+      (sum, item) => sum + (item.allocatedDiscount ?? 0),
+      0
+    ),
+    state.order.discount
+  );
+});
+
+test("calculates and persists a percentage discount", async () => {
+  const harness = createHarness({
+    order: makeOrder({ shippingFee: 0 }),
+    products: [makeProduct("product-1")],
+    items: [],
+    movements: [],
+  });
+
+  await completeImportedOrder(
+    "order-1",
+    {
+      discount: { type: "PERCENTAGE", value: 10 },
+      items: [{ productId: "product-1", quantity: 2 }],
+    },
+    harness.runTransaction
+  );
+  const state = harness.getState();
+
+  assert.equal(state.order.discountType, "PERCENTAGE");
+  assert.equal(state.order.discountValue, 10);
+  assert.equal(state.order.discount, 2);
+  assert.equal(state.order.total, 18);
+  assert.equal(state.items[0].allocatedDiscount, 2);
+  assert.equal(state.items[0].lineProfit, 10);
+});
+
+test("allows a fixed discount equal to subtotal without negative revenue", async () => {
+  const harness = createHarness({
+    order: makeOrder({ shippingFee: 0 }),
+    products: [makeProduct("product-1")],
+    items: [],
+    movements: [],
+  });
+
+  await completeImportedOrder(
+    "order-1",
+    {
+      discount: { type: "FIXED", value: 20 },
+      items: [{ productId: "product-1", quantity: 2 }],
+    },
+    harness.runTransaction
+  );
+  const state = harness.getState();
+
+  assert.equal(state.order.total, 0);
+  assert.equal(state.items[0].allocatedDiscount, 20);
+  assert.equal(
+    state.items[0].lineTotal - (state.items[0].allocatedDiscount ?? 0),
+    0
+  );
+});
+
+test("allocates rounding remainders deterministically and exactly", async () => {
+  const harness = createHarness({
+    order: makeOrder({ shippingFee: 0 }),
+    products: [
+      makeProduct("product-1", { sellPrice: 0.01, costPrice: 0 }),
+      makeProduct("product-2", { sellPrice: 0.01, costPrice: 0 }),
+      makeProduct("product-3", { sellPrice: 0.01, costPrice: 0 }),
+    ],
+    items: [],
+    movements: [],
+  });
+
+  await completeImportedOrder(
+    "order-1",
+    {
+      discount: { type: "FIXED", value: 0.02 },
+      items: [
+        { productId: "product-1", quantity: 1 },
+        { productId: "product-2", quantity: 1 },
+        { productId: "product-3", quantity: 1 },
+      ],
+    },
+    harness.runTransaction
+  );
+  const state = harness.getState();
+
+  assert.deepEqual(
+    state.items.map((item) => item.allocatedDiscount),
+    [0.01, 0.01, 0]
+  );
+  assert.equal(
+    state.items.reduce(
+      (sum, item) => sum + (item.allocatedDiscount ?? 0),
+      0
+    ),
+    0.02
+  );
+});
+
+test("invalid discounts roll back claim, items, stock, and movements", async () => {
+  for (const discount of [
+    { type: "FIXED", value: 21 } as const,
+    { type: "FIXED", value: -1 } as const,
+    { type: "PERCENTAGE", value: 101 } as const,
+  ]) {
+    const initialState: TestState = {
+      order: makeOrder({ shippingFee: 0 }),
+      products: [makeProduct("product-1")],
+      items: [],
+      movements: [],
+    };
+    const harness = createHarness(initialState);
+
+    await assert.rejects(
+      completeImportedOrder(
+        "order-1",
+        {
+          discount,
+          items: [{ productId: "product-1", quantity: 2 }],
+        },
+        harness.runTransaction
+      ),
+      AppError
+    );
+
+    assert.deepEqual(harness.getState(), initialState);
+  }
+});
+
+test("zero-subtotal completion is rejected without side effects", async () => {
+  const initialState: TestState = {
+    order: makeOrder({ shippingFee: 0 }),
+    products: [makeProduct("product-1", { sellPrice: 0 })],
+    items: [],
+    movements: [],
+  };
+  const harness = createHarness(initialState);
+
+  await assert.rejects(
+    completeImportedOrder(
+      "order-1",
+      {
+        discount: { type: "NONE", value: 0 },
+        items: [{ productId: "product-1", quantity: 1 }],
+      },
+      harness.runTransaction
+    ),
+    /subtotal must be greater than zero/i
+  );
+
+  assert.deepEqual(harness.getState(), initialState);
 });
 
 test("insufficient stock rolls back items, stock, movements, and order state", async () => {

@@ -15,6 +15,11 @@ import { getProducts, Product } from "../api/products";
 import { FieldError } from "../components/FieldError";
 import { FloatingBackToTop } from "../components/FloatingBackToTop";
 import { showSuccessMessage } from "../utils/showSuccessMessage";
+import {
+  calculateOrderDiscountPreview,
+  DISCOUNT_OPTIONS,
+  DiscountType,
+} from "../utils/orderDiscount";
 
 type SelectedOrderItem = {
   productId: string;
@@ -36,6 +41,7 @@ export default function AddOrderScreen() {
 
   const [orderNumber, setOrderNumber] = useState("");
   const [customerName, setCustomerName] = useState("");
+  const [discountType, setDiscountType] = useState<DiscountType>("NONE");
   const [discount, setDiscount] = useState("0");
   const [shippingFee, setShippingFee] = useState("0");
 
@@ -76,9 +82,17 @@ export default function AddOrderScreen() {
     }, 0);
   }, [items]);
 
-  const parsedDiscount = Number(discount) || 0;
-  const parsedShippingFee = Number(shippingFee) || 0;
-  const total = subtotal - parsedDiscount + parsedShippingFee;
+  const parsedShippingFee = Number(shippingFee);
+  const shippingFeeIsValid =
+    Number.isFinite(parsedShippingFee) && parsedShippingFee >= 0;
+  const discountPreview = calculateOrderDiscountPreview({
+    subtotal,
+    shippingFee: shippingFeeIsValid ? parsedShippingFee : 0,
+    type: discountType,
+    value: discount,
+  });
+  const orderFinancialsAreValid =
+    discountPreview.isValid && shippingFeeIsValid;
 
   const validateAddItemForm = () => {
     const errors = {
@@ -215,8 +229,11 @@ export default function AddOrderScreen() {
       return;
     }
 
-    if (parsedDiscount < 0 || parsedShippingFee < 0) {
-      Alert.alert("Error", "Discount and shipping fee cannot be negative.");
+    if (!orderFinancialsAreValid) {
+      Alert.alert(
+        "Error",
+        discountPreview.error || "Enter a valid non-negative shipping fee."
+      );
       return;
     }
 
@@ -230,7 +247,10 @@ export default function AddOrderScreen() {
         customerName: customerName.trim() || undefined,
         platform: "MANUAL",
         status: "PAID",
-        discount: parsedDiscount,
+        discount: {
+          type: discountType,
+          value: discountPreview.enteredValue,
+        },
         shippingFee: parsedShippingFee,
         items: items.map((item) => ({
           productId: item.productId,
@@ -261,6 +281,8 @@ export default function AddOrderScreen() {
     <ScrollView
       ref={scrollRef}
       contentContainerStyle={styles.container}
+      automaticallyAdjustKeyboardInsets
+      keyboardShouldPersistTaps="handled"
       onScroll={(event) =>
         setShowBackToTop(event.nativeEvent.contentOffset.y > 240)
       }
@@ -402,14 +424,50 @@ export default function AddOrderScreen() {
         )}
       </View>
 
-      <Text style={styles.label}>Discount</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Example: 0"
-        value={discount}
-        onChangeText={setDiscount}
-        keyboardType="numeric"
-      />
+      <View style={styles.formCard}>
+        <Text style={styles.sectionTitle}>Discount</Text>
+        <View style={styles.discountOptions}>
+          {DISCOUNT_OPTIONS.map((option) => (
+            <Pressable
+              key={option.type}
+              style={[
+                styles.discountOption,
+                discountType === option.type && styles.discountOptionActive,
+              ]}
+              onPress={() => {
+                setDiscountType(option.type);
+                setDiscount("0");
+              }}
+            >
+              <Text
+                style={[
+                  styles.discountOptionText,
+                  discountType === option.type &&
+                    styles.discountOptionTextActive,
+                ]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {discountType !== "NONE" ? (
+          <>
+            <Text style={styles.label}>
+              {discountType === "FIXED" ? "Amount (RM)" : "Percentage (%)"}
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder={discountType === "FIXED" ? "Example: 10.00" : "Example: 10"}
+              value={discount}
+              onChangeText={setDiscount}
+              keyboardType="decimal-pad"
+            />
+          </>
+        ) : null}
+        <FieldError message={discountPreview.error} />
+      </View>
 
       <Text style={styles.label}>Shipping Fee</Text>
       <TextInput
@@ -418,6 +476,11 @@ export default function AddOrderScreen() {
         value={shippingFee}
         onChangeText={setShippingFee}
         keyboardType="numeric"
+      />
+      <FieldError
+        message={
+          shippingFeeIsValid ? "" : "Shipping fee must be zero or greater."
+        }
       />
 
       <View style={styles.summaryCard}>
@@ -431,27 +494,32 @@ export default function AddOrderScreen() {
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>Discount</Text>
           <Text style={styles.summaryValue}>
-            RM {parsedDiscount.toFixed(2)}
+            RM {discountPreview.discountAmount.toFixed(2)}
           </Text>
         </View>
 
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>Shipping Fee</Text>
           <Text style={styles.summaryValue}>
-            RM {parsedShippingFee.toFixed(2)}
+            RM {(shippingFeeIsValid ? parsedShippingFee : 0).toFixed(2)}
           </Text>
         </View>
 
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
-          <Text style={styles.totalValue}>RM {total.toFixed(2)}</Text>
+          <Text style={styles.totalValue}>
+            RM {discountPreview.finalTotal.toFixed(2)}
+          </Text>
         </View>
       </View>
 
       <Pressable
-        style={[styles.saveButton, saving && styles.disabledButton]}
+        style={[
+          styles.saveButton,
+          (saving || !orderFinancialsAreValid) && styles.disabledButton,
+        ]}
         onPress={handleCreateOrder}
-        disabled={saving}
+        disabled={saving || !orderFinancialsAreValid}
       >
         <Text style={styles.saveButtonText}>
           {saving ? "Creating..." : "Create Order"}
@@ -508,6 +576,31 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
   },
+  discountOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 14,
+  },
+  discountOption: {
+    minHeight: 40,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    backgroundColor: "#f6f6f6",
+  },
+  discountOptionActive: {
+    backgroundColor: "#111",
+    borderColor: "#111",
+  },
+  discountOptionText: {
+    color: "#666",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  discountOptionTextActive: { color: "#fff" },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "900",

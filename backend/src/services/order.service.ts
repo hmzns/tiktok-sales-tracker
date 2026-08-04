@@ -1,6 +1,17 @@
 import prisma from "../lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { AppError } from "../utils/AppError";
+import {
+  allocateDiscountCents,
+  fromMoneyCents,
+  roundMoney,
+  toMoneyCents,
+} from "../utils/orderFinancials";
+
+export type OrderDiscountInput = {
+  type: "NONE" | "FIXED" | "PERCENTAGE";
+  value: number;
+};
 
 type CreateOrderInput = {
   orderNumber?: string;
@@ -15,7 +26,7 @@ type CreateOrderInput = {
     | "CANCELLED"
     | "REFUNDED";
   customerName?: string;
-  discount?: number;
+  discount?: OrderDiscountInput | number;
   shippingFee?: number;
   items: {
     productId: string;
@@ -25,6 +36,7 @@ type CreateOrderInput = {
 };
 
 type CompleteImportedOrderInput = {
+  discount?: OrderDiscountInput | number;
   items: {
     productId: string;
     quantity: number;
@@ -49,10 +61,23 @@ const publicOrderOmit = {
   rawImportData: true,
 } satisfies Prisma.SalesOrderOmit;
 
+const normalizeDiscountInput = (
+  discount: OrderDiscountInput | number | undefined
+): OrderDiscountInput => {
+  if (typeof discount === "number") {
+    return {
+      type: discount === 0 ? "NONE" : "FIXED",
+      value: discount,
+    };
+  }
+
+  return discount ?? { type: "NONE", value: 0 };
+};
+
 const buildOrderFinancials = (
   items: CompleteImportedOrderInput["items"],
   products: OrderProduct[],
-  discount: number,
+  discountInput: OrderDiscountInput | number | undefined,
   shippingFee: number
 ) => {
   const productsById = new Map(
@@ -68,6 +93,10 @@ const buildOrderFinancials = (
       throw new AppError("One or more products were not found", 404);
     }
 
+    if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+      throw new AppError("Quantity must be a positive whole number", 400);
+    }
+
     if (!product.isActive) {
       throw new AppError(`${product.name} is inactive`, 400);
     }
@@ -76,38 +105,112 @@ const buildOrderFinancials = (
       throw new AppError(`Not enough stock for ${product.name}`, 400);
     }
 
-    const sellPrice = item.sellPrice ?? product.sellPrice;
-    const costPrice = product.costPrice;
-    const lineTotal = sellPrice * item.quantity;
-    const lineCost = costPrice * item.quantity;
+    const rawSellPrice = item.sellPrice ?? product.sellPrice;
+
+    if (!Number.isFinite(rawSellPrice) || rawSellPrice < 0) {
+      throw new AppError("Sell price must be a non-negative number", 400);
+    }
+
+    if (!Number.isFinite(product.costPrice) || product.costPrice < 0) {
+      throw new AppError("Product cost must be a non-negative number", 400);
+    }
+
+    const sellPrice = roundMoney(rawSellPrice);
+    const costPrice = roundMoney(product.costPrice);
+    const lineTotalCents = toMoneyCents(sellPrice * item.quantity);
+    const lineCostCents = toMoneyCents(costPrice * item.quantity);
 
     return {
       productId: product.id,
       quantity: item.quantity,
       sellPrice,
       costPrice,
-      lineTotal,
-      lineCost,
-      lineProfit: lineTotal - lineCost,
+      lineTotalCents,
+      lineCostCents,
     };
   });
 
-  const subtotal = orderItemsData.reduce(
-    (sum, item) => sum + item.lineTotal,
+  const subtotalCents = orderItemsData.reduce(
+    (sum, item) => sum + item.lineTotalCents,
     0
   );
-  const totalCost = orderItemsData.reduce(
-    (sum, item) => sum + item.lineCost,
+
+  if (subtotalCents <= 0) {
+    throw new AppError("Order subtotal must be greater than zero", 400);
+  }
+
+  const discount = normalizeDiscountInput(discountInput);
+
+  if (!Number.isFinite(discount.value) || discount.value < 0) {
+    throw new AppError("Discount value must be a non-negative number", 400);
+  }
+
+  let discountCents = 0;
+  let discountValue = discount.value;
+
+  if (discount.type === "NONE") {
+    if (discount.value !== 0) {
+      throw new AppError("No Discount value must be zero", 400);
+    }
+
+    discountValue = 0;
+  } else if (discount.type === "FIXED") {
+    discountValue = roundMoney(discount.value);
+    discountCents = toMoneyCents(discountValue);
+  } else if (discount.type === "PERCENTAGE") {
+    if (discount.value > 100) {
+      throw new AppError("Discount percentage cannot exceed 100", 400);
+    }
+
+    discountCents = Math.round((subtotalCents * discount.value) / 100);
+  } else {
+    throw new AppError("Invalid discount type", 400);
+  }
+
+  if (discountCents > subtotalCents) {
+    throw new AppError("Fixed discount cannot exceed the order subtotal", 400);
+  }
+
+  if (!Number.isFinite(shippingFee) || shippingFee < 0) {
+    throw new AppError("Shipping fee must be a non-negative number", 400);
+  }
+
+  const allocatedDiscountCents = allocateDiscountCents(
+    orderItemsData.map((item) => item.lineTotalCents),
+    discountCents
+  );
+  const finalizedOrderItems = orderItemsData.map((item, index) => {
+    const allocatedDiscount = allocatedDiscountCents[index];
+    const lineNetRevenueCents = item.lineTotalCents - allocatedDiscount;
+
+    return {
+      productId: item.productId,
+      quantity: item.quantity,
+      sellPrice: item.sellPrice,
+      costPrice: item.costPrice,
+      lineTotal: fromMoneyCents(item.lineTotalCents),
+      allocatedDiscount: fromMoneyCents(allocatedDiscount),
+      lineCost: fromMoneyCents(item.lineCostCents),
+      lineProfit: fromMoneyCents(lineNetRevenueCents - item.lineCostCents),
+    };
+  });
+  const totalCostCents = orderItemsData.reduce(
+    (sum, item) => sum + item.lineCostCents,
     0
   );
-  const total = subtotal - discount + shippingFee;
+  const shippingFeeCents = toMoneyCents(roundMoney(shippingFee));
+  const totalCents = subtotalCents - discountCents + shippingFeeCents;
 
   return {
-    orderItemsData,
-    subtotal,
-    totalCost,
-    total,
-    profit: total - totalCost,
+    orderItemsData: finalizedOrderItems,
+    subtotal: fromMoneyCents(subtotalCents),
+    discountType: discount.type,
+    discountValue,
+    discount: fromMoneyCents(discountCents),
+    shippingFee: fromMoneyCents(shippingFeeCents),
+    totalCost: fromMoneyCents(totalCostCents),
+    total: fromMoneyCents(totalCents),
+    profit: fromMoneyCents(totalCents - totalCostCents),
   };
 };
 
@@ -161,7 +264,6 @@ const deductStockForOrderItem = async (
 
 // POST /orders
 export const createOrder = async (data: CreateOrderInput) => {
-  const discount = data.discount ?? 0;
   const shippingFee = data.shippingFee ?? 0;
 
   const productIds = data.items.map((item) => item.productId);
@@ -184,7 +286,11 @@ export const createOrder = async (data: CreateOrderInput) => {
     totalCost,
     total,
     profit,
-  } = buildOrderFinancials(data.items, products, discount, shippingFee);
+    discountType,
+    discountValue,
+    discount,
+    shippingFee: calculatedShippingFee,
+  } = buildOrderFinancials(data.items, products, data.discount, shippingFee);
 
   // The order, stock deductions, and movement audit records must succeed or
   // fail together to keep inventory consistent with sales.
@@ -201,8 +307,10 @@ export const createOrder = async (data: CreateOrderInput) => {
         customerName: data.customerName,
 
         subtotal,
+        discountType,
+        discountValue,
         discount,
-        shippingFee,
+        shippingFee: calculatedShippingFee,
         total,
         totalCost,
         profit,
@@ -253,7 +361,6 @@ export const completeImportedOrder = async (
         source: true,
         importStatus: true,
         stockProcessed: true,
-        discount: true,
         shippingFee: true,
       },
     });
@@ -318,10 +425,14 @@ export const completeImportedOrder = async (
       totalCost,
       total,
       profit,
+      discountType,
+      discountValue,
+      discount,
+      shippingFee: calculatedShippingFee,
     } = buildOrderFinancials(
       data.items,
       products,
-      order.discount,
+      data.discount,
       order.shippingFee
     );
 
@@ -350,6 +461,10 @@ export const completeImportedOrder = async (
       where: { id },
       data: {
         subtotal,
+        discountType,
+        discountValue,
+        discount,
+        shippingFee: calculatedShippingFee,
         total,
         totalCost,
         profit,

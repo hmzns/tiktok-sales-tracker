@@ -35,6 +35,12 @@ enum ImportStatus {
   IMPORT_FAILED
 }
 
+enum DiscountType {
+  NONE
+  FIXED
+  PERCENTAGE
+}
+
 enum ExpenseCategory {
   PACKAGING
   ADS
@@ -106,10 +112,12 @@ model SalesOrder {
 
   customerName String?
 
-  subtotal    Float
-  discount    Float @default(0)
-  shippingFee Float @default(0)
-  total       Float
+  subtotal      Float
+  discountType  DiscountType @default(NONE)
+  discountValue Float        @default(0)
+  discount      Float        @default(0)
+  shippingFee   Float        @default(0)
+  total         Float
 
   totalCost Float
   profit    Float
@@ -176,9 +184,10 @@ model OrderItem {
   sellPrice Float
   costPrice Float
 
-  lineTotal  Float
-  lineCost   Float
-  lineProfit Float
+  lineTotal         Float
+  allocatedDiscount Float?
+  lineCost          Float
+  lineProfit        Float
 
   order   SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product    @relation(fields: [productId], references: [id])

@@ -51,3 +51,211 @@ test("dashboard and monthly report query only READY sales orders", async () => {
     prisma.stockMovement.findMany = originalStockMovementFindMany;
   }
 });
+
+test("monthly product performance uses stored item prices and distinct orders", async () => {
+  const originalSalesOrderFindMany = prisma.salesOrder.findMany;
+  const originalExpenseFindMany = prisma.expense.findMany;
+  let reportQuery: unknown;
+
+  const inactiveProduct = {
+    name: "Archived Serum",
+    sku: "SERUM-01",
+    isActive: false,
+    category: { name: "Skincare" },
+  };
+  const activeProduct = {
+    name: "Lip Tint",
+    sku: "LIP-02",
+    isActive: true,
+    category: null,
+  };
+
+  const orders = [
+    {
+      id: "order-1",
+      orderNumber: "ORD-1",
+      platform: "MANUAL",
+      status: "DELIVERED",
+      customerName: null,
+      createdAt: new Date(2026, 6, 5),
+      subtotal: 52,
+      discount: 5,
+      shippingFee: 0,
+      total: 52,
+      totalCost: 24,
+      profit: 28,
+      items: [
+        {
+          productId: "product-1",
+          quantity: 2,
+          sellPrice: 10,
+          costPrice: 4,
+          lineTotal: 20,
+          allocatedDiscount: 2,
+          lineCost: 8,
+          lineProfit: 12,
+          product: inactiveProduct,
+        },
+        {
+          productId: "product-1",
+          quantity: 1,
+          sellPrice: 12,
+          costPrice: 4,
+          lineTotal: 12,
+          allocatedDiscount: 1,
+          lineCost: 4,
+          lineProfit: 8,
+          product: inactiveProduct,
+        },
+        {
+          productId: "product-2",
+          quantity: 1,
+          sellPrice: 20,
+          costPrice: 12,
+          lineTotal: 20,
+          allocatedDiscount: 2,
+          lineCost: 12,
+          lineProfit: 8,
+          product: activeProduct,
+        },
+      ],
+    },
+    {
+      id: "order-2",
+      orderNumber: "ORD-2",
+      platform: "TIKTOK_SHOP",
+      status: "PAID",
+      customerName: null,
+      createdAt: new Date(2026, 6, 8),
+      subtotal: 27,
+      discount: 3,
+      shippingFee: 0,
+      total: 27,
+      totalCost: 15,
+      profit: 12,
+      items: [
+        {
+          productId: "product-1",
+          quantity: 3,
+          sellPrice: 9,
+          costPrice: 5,
+          lineTotal: 27,
+          allocatedDiscount: null,
+          lineCost: 15,
+          lineProfit: 12,
+          product: inactiveProduct,
+        },
+      ],
+    },
+  ];
+
+  prisma.salesOrder.findMany = (async (args: unknown) => {
+    reportQuery = args;
+    return orders;
+  }) as unknown as typeof prisma.salesOrder.findMany;
+  prisma.expense.findMany = (async () => []) as typeof prisma.expense.findMany;
+
+  try {
+    const report = await getMonthlySalesReport({ year: 2026, month: 7 });
+    const serum = report.productPerformance.products.find(
+      (product) => product.productId === "product-1"
+    );
+
+    assert.ok(serum);
+    assert.equal(serum.isActive, false);
+    assert.equal(serum.unitsSold, 6);
+    assert.equal(serum.orderCount, 2);
+    assert.equal(serum.grossRevenue, 59);
+    assert.equal(serum.discountAmount, 6);
+    assert.equal(serum.netRevenue, 53);
+    assert.equal(serum.grossProfit, 26);
+    assert.ok(Math.abs(serum.averageSellingPrice - 53 / 6) < 1e-10);
+    assert.ok(Math.abs((serum.profitMargin ?? 0) - (26 / 53) * 100) < 1e-10);
+
+    assert.deepEqual(report.productPerformance.summary, {
+      productCount: 2,
+      unitsSold: 7,
+      grossRevenue: 79,
+      discountAmount: 8,
+      netRevenue: 71,
+      grossProfit: 32,
+    });
+    assert.equal(
+      report.productPerformance.highlights.bestSellingProduct?.productId,
+      "product-1"
+    );
+    assert.equal(
+      report.productPerformance.highlights.highestRevenueProduct?.productId,
+      "product-1"
+    );
+    assert.equal(
+      report.productPerformance.profitAccuracy,
+      "HISTORICAL_ORDER_ITEM_COST"
+    );
+
+    const query = reportQuery as {
+      where: { importStatus: string; status: { notIn: string[] } };
+      select: Record<string, unknown>;
+    };
+    assert.equal(query.where.importStatus, "READY");
+    assert.deepEqual(query.where.status.notIn, ["CANCELLED", "REFUNDED"]);
+    assert.equal("rawImportData" in query.select, false);
+  } finally {
+    prisma.salesOrder.findMany = originalSalesOrderFindMany;
+    prisma.expense.findMany = originalExpenseFindMany;
+  }
+});
+
+test("historical items without allocation and without discount keep gross revenue", async () => {
+  const originalSalesOrderFindMany = prisma.salesOrder.findMany;
+  const originalExpenseFindMany = prisma.expense.findMany;
+
+  prisma.salesOrder.findMany = (async () => [
+    {
+      id: "legacy-order",
+      orderNumber: "LEGACY-1",
+      platform: "MANUAL",
+      status: "PAID",
+      customerName: null,
+      createdAt: new Date(2026, 6, 10),
+      subtotal: 20,
+      discount: 0,
+      shippingFee: 0,
+      total: 20,
+      totalCost: 8,
+      profit: 12,
+      items: [
+        {
+          productId: "product-1",
+          quantity: 2,
+          sellPrice: 10,
+          costPrice: 4,
+          lineTotal: 20,
+          allocatedDiscount: null,
+          lineCost: 8,
+          lineProfit: 12,
+          product: {
+            name: "Legacy Product",
+            sku: "LEGACY-SKU",
+            isActive: true,
+            category: null,
+          },
+        },
+      ],
+    },
+  ]) as unknown as typeof prisma.salesOrder.findMany;
+  prisma.expense.findMany = (async () => []) as typeof prisma.expense.findMany;
+
+  try {
+    const report = await getMonthlySalesReport({ year: 2026, month: 7 });
+    const product = report.productPerformance.products[0];
+
+    assert.equal(product.grossRevenue, 20);
+    assert.equal(product.discountAmount, 0);
+    assert.equal(product.netRevenue, 20);
+    assert.equal(product.grossProfit, 12);
+  } finally {
+    prisma.salesOrder.findMany = originalSalesOrderFindMany;
+    prisma.expense.findMany = originalExpenseFindMany;
+  }
+});

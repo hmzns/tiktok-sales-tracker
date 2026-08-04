@@ -1,4 +1,5 @@
 import { apiClient } from "./client";
+import type { OrderDiscountInput } from "../utils/orderDiscount";
 
 export type OrderItem = {
   id: string;
@@ -7,6 +8,7 @@ export type OrderItem = {
   sellPrice: number;
   costPrice: number;
   lineTotal: number;
+  allocatedDiscount: number | null;
   lineCost: number;
   lineProfit: number;
   product: {
@@ -32,6 +34,8 @@ export type SalesOrder = {
   status: OrderStatus;
   customerName: string | null;
   subtotal: number;
+  discountType: OrderDiscountInput["type"];
+  discountValue: number;
   discount: number;
   shippingFee: number;
   total: number;
@@ -110,7 +114,7 @@ export type CreateOrderInput = {
   platform?: "MANUAL" | "TIKTOK_SHOP" | "SHOPEE" | "LAZADA";
   status?: "PENDING" | "PAID" | "PACKING" | "SHIPPED" | "DELIVERED";
   customerName?: string;
-  discount?: number;
+  discount?: OrderDiscountInput;
   shippingFee?: number;
   items: {
     productId: string;
@@ -232,14 +236,17 @@ export const getTikTokSyncHistory = async (
 
 export const completeImportedOrder = async (
   salesOrderId: string,
-  items: {
-    productId: string;
-    quantity: number;
-  }[]
+  data: {
+    discount: OrderDiscountInput;
+    items: {
+      productId: string;
+      quantity: number;
+    }[];
+  }
 ): Promise<SalesOrder> => {
   const response = await apiClient.post(
     `/orders/${salesOrderId}/complete-import`,
-    { items }
+    data
   );
 
   return response.data.data;

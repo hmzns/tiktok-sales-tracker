@@ -94,6 +94,12 @@ router.get("/", (req, res) => {
             method: "POST",
             path: "/orders",
             description: "Create order",
+            body: {
+              items:
+                "non-empty array of { productId, quantity, optional sellPrice }",
+              discount:
+                "optional { type: NONE | FIXED | PERCENTAGE, value: number }",
+            },
           },
           {
             method: "POST",
@@ -103,6 +109,8 @@ router.get("/", (req, res) => {
             body: {
               items:
                 "non-empty array of { productId, quantity, optional sellPrice }",
+              discount:
+                "optional { type: NONE | FIXED | PERCENTAGE, value: number }",
             },
           },
           {
@@ -166,7 +174,8 @@ router.get("/", (req, res) => {
           {
             method: "GET",
             path: "/reports/monthly",
-            description: "Get export-ready monthly sales report",
+            description:
+              "Get export-ready monthly sales and product performance reports",
             query: ["year", "month"],
           },
         ],

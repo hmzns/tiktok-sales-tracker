@@ -22,6 +22,48 @@ export type ProductSummary = {
   profit: number;
 };
 
+export type ProductPerformanceRow = {
+  productId: string;
+  name: string;
+  sku: string;
+  isActive: boolean;
+  unitsSold: number;
+  orderCount: number;
+  grossRevenue: number;
+  discountAmount: number;
+  netRevenue: number;
+  averageSellingPrice: number;
+  grossProfit: number;
+  profitMargin: number | null;
+};
+
+export type ProductPerformance = {
+  profitAccuracy: "HISTORICAL_ORDER_ITEM_COST";
+  summary: {
+    productCount: number;
+    unitsSold: number;
+    grossRevenue: number;
+    discountAmount: number;
+    netRevenue: number;
+    grossProfit: number;
+  };
+  highlights: {
+    bestSellingProduct: {
+      productId: string;
+      name: string;
+      sku: string;
+      unitsSold: number;
+    } | null;
+    highestRevenueProduct: {
+      productId: string;
+      name: string;
+      sku: string;
+      netRevenue: number;
+    } | null;
+  };
+  products: ProductPerformanceRow[];
+};
+
 export type ExpenseByCategory = {
   category: string;
   amount: number;
@@ -49,6 +91,7 @@ export type MonthlyReport = {
   summary: MonthlyReportSummary;
   orderRows: ReportOrderRow[];
   productSummary: ProductSummary[];
+  productPerformance: ProductPerformance;
   expenseRows: unknown[];
   expensesByCategory: ExpenseByCategory[];
 };

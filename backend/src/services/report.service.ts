@@ -1,4 +1,10 @@
 import prisma from "../lib/prisma";
+import {
+  allocateDiscountCents,
+  fromMoneyCents,
+  roundMoney,
+  toMoneyCents,
+} from "../utils/orderFinancials";
 
 type MonthlyReportFilter = {
   year?: number;
@@ -46,12 +52,39 @@ export const getMonthlySalesReport = async (
     orderBy: {
       createdAt: "asc",
     },
-    include: {
+    select: {
+      id: true,
+      orderNumber: true,
+      platform: true,
+      status: true,
+      customerName: true,
+      createdAt: true,
+      subtotal: true,
+      discount: true,
+      shippingFee: true,
+      total: true,
+      totalCost: true,
+      profit: true,
       items: {
-        include: {
+        select: {
+          productId: true,
+          quantity: true,
+          sellPrice: true,
+          costPrice: true,
+          lineTotal: true,
+          allocatedDiscount: true,
+          lineCost: true,
+          lineProfit: true,
           product: {
-            include: {
-              category: true,
+            select: {
+              name: true,
+              sku: true,
+              isActive: true,
+              category: {
+                select: {
+                  name: true,
+                },
+              },
             },
           },
         },
@@ -119,7 +152,9 @@ export const getMonthlySalesReport = async (
     })),
   }));
 
-  // Collapse line items across orders into one performance row per product.
+  // Collapse snapshot line-item values into one performance row per product.
+  // OrderItem prices and costs are captured at sale time, so later Product
+  // price changes do not rewrite historical revenue or gross profit.
   const productMap = new Map<
     string,
     {
@@ -127,40 +162,162 @@ export const getMonthlySalesReport = async (
       productName: string;
       sku: string;
       category: string | null;
-      quantitySold: number;
-      revenue: number;
-      cost: number;
-      profit: number;
+      isActive: boolean;
+      unitsSold: number;
+      grossRevenueCents: number;
+      discountCents: number;
+      productCostCents: number;
+      orderIds: Set<string>;
     }
   >();
 
   for (const order of orders) {
-    for (const item of order.items) {
+    const lineGrossCents = order.items.map((item) =>
+      toMoneyCents(item.quantity * item.sellPrice)
+    );
+    const hasStoredAllocation = order.items.every(
+      (item) => item.allocatedDiscount != null
+    );
+    let orderAllocatedDiscountCents: number[];
+
+    if (hasStoredAllocation) {
+      orderAllocatedDiscountCents = order.items.map((item, index) =>
+        Math.min(
+          lineGrossCents[index],
+          Math.max(0, toMoneyCents(item.allocatedDiscount ?? 0))
+        )
+      );
+    } else {
+      const grossSubtotalCents = lineGrossCents.reduce(
+        (sum, lineAmount) => sum + lineAmount,
+        0
+      );
+      const legacyDiscountCents = Math.min(
+        grossSubtotalCents,
+        Math.max(0, toMoneyCents(order.discount))
+      );
+
+      orderAllocatedDiscountCents =
+        grossSubtotalCents > 0
+          ? allocateDiscountCents(lineGrossCents, legacyDiscountCents)
+          : lineGrossCents.map(() => 0);
+    }
+
+    for (const [itemIndex, item] of order.items.entries()) {
       const existing = productMap.get(item.productId);
+      const itemGrossRevenueCents = lineGrossCents[itemIndex];
+      const itemDiscountCents = orderAllocatedDiscountCents[itemIndex];
+      const itemCostCents = toMoneyCents(item.quantity * item.costPrice);
 
       if (existing) {
-        existing.quantitySold += item.quantity;
-        existing.revenue += item.lineTotal;
-        existing.cost += item.lineCost;
-        existing.profit += item.lineProfit;
+        existing.unitsSold += item.quantity;
+        existing.grossRevenueCents += itemGrossRevenueCents;
+        existing.discountCents += itemDiscountCents;
+        existing.productCostCents += itemCostCents;
+        existing.orderIds.add(order.id);
       } else {
         productMap.set(item.productId, {
           productId: item.productId,
           productName: item.product.name,
           sku: item.product.sku,
           category: item.product.category?.name ?? null,
-          quantitySold: item.quantity,
-          revenue: item.lineTotal,
-          cost: item.lineCost,
-          profit: item.lineProfit,
+          isActive: item.product.isActive,
+          unitsSold: item.quantity,
+          grossRevenueCents: itemGrossRevenueCents,
+          discountCents: itemDiscountCents,
+          productCostCents: itemCostCents,
+          orderIds: new Set([order.id]),
         });
       }
     }
   }
 
-  const productSummary = Array.from(productMap.values()).sort(
-    (a, b) => b.quantitySold - a.quantitySold
+  const productPerformanceRows = Array.from(productMap.values())
+    .map((product) => {
+      const netRevenueCents =
+        product.grossRevenueCents - product.discountCents;
+      const grossProfitCents = netRevenueCents - product.productCostCents;
+      const netRevenue = fromMoneyCents(netRevenueCents);
+      const grossProfit = fromMoneyCents(grossProfitCents);
+
+      return {
+        productId: product.productId,
+        name: product.productName,
+        sku: product.sku,
+        isActive: product.isActive,
+        unitsSold: product.unitsSold,
+        orderCount: product.orderIds.size,
+        grossRevenue: fromMoneyCents(product.grossRevenueCents),
+        discountAmount: fromMoneyCents(product.discountCents),
+        netRevenue,
+        averageSellingPrice:
+          product.unitsSold > 0
+            ? netRevenue / product.unitsSold
+            : 0,
+        grossProfit,
+        profitMargin:
+          netRevenue !== 0
+            ? (grossProfit / netRevenue) * 100
+            : null,
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.unitsSold - a.unitsSold ||
+        b.netRevenue - a.netRevenue ||
+        a.name.localeCompare(b.name)
+    );
+
+  // Preserve the existing Overview payload while sourcing it from the same
+  // snapshot-based product calculation used by Product Performance.
+  const productSummary = productPerformanceRows.map((product) => ({
+    productId: product.productId,
+    productName: product.name,
+    sku: product.sku,
+    category: productMap.get(product.productId)?.category ?? null,
+    quantitySold: product.unitsSold,
+    revenue: product.netRevenue,
+    cost: fromMoneyCents(
+      productMap.get(product.productId)?.productCostCents ?? 0
+    ),
+    profit: product.grossProfit,
+  }));
+
+  const productPerformanceSummary = productPerformanceRows.reduce(
+    (summary, product) => {
+      summary.unitsSold += product.unitsSold;
+      summary.grossRevenue = roundMoney(
+        summary.grossRevenue + product.grossRevenue
+      );
+      summary.discountAmount = roundMoney(
+        summary.discountAmount + product.discountAmount
+      );
+      summary.netRevenue = roundMoney(
+        summary.netRevenue + product.netRevenue
+      );
+      summary.grossProfit = roundMoney(
+        summary.grossProfit + product.grossProfit
+      );
+      return summary;
+    },
+    {
+      productCount: productPerformanceRows.length,
+      unitsSold: 0,
+      grossRevenue: 0,
+      discountAmount: 0,
+      netRevenue: 0,
+      grossProfit: 0,
+    }
   );
+
+  const bestSellingProduct = productPerformanceRows[0] ?? null;
+  const highestRevenueProduct =
+    [...productPerformanceRows].sort(
+      (a, b) =>
+        b.netRevenue - a.netRevenue ||
+        b.unitsSold - a.unitsSold ||
+        a.name.localeCompare(b.name)
+    )[0] ?? null;
 
   const expenseRows = expenses.map((expense) => ({
     expenseId: expense.id,
@@ -216,6 +373,29 @@ export const getMonthlySalesReport = async (
     },
     orderRows,
     productSummary,
+    productPerformance: {
+      profitAccuracy: "HISTORICAL_ORDER_ITEM_COST" as const,
+      summary: productPerformanceSummary,
+      highlights: {
+        bestSellingProduct: bestSellingProduct
+          ? {
+              productId: bestSellingProduct.productId,
+              name: bestSellingProduct.name,
+              sku: bestSellingProduct.sku,
+              unitsSold: bestSellingProduct.unitsSold,
+            }
+          : null,
+        highestRevenueProduct: highestRevenueProduct
+          ? {
+              productId: highestRevenueProduct.productId,
+              name: highestRevenueProduct.name,
+              sku: highestRevenueProduct.sku,
+              netRevenue: highestRevenueProduct.netRevenue,
+            }
+          : null,
+      },
+      products: productPerformanceRows,
+    },
     expenseRows,
     expensesByCategory,
   };
