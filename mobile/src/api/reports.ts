@@ -96,6 +96,31 @@ export type MonthlyReport = {
   expensesByCategory: ExpenseByCategory[];
 };
 
+export type SalesTrendDay = {
+  date: string;
+  orderCount: number;
+  unitsSold: number;
+  grossRevenue: number;
+  discountAmount: number;
+  netRevenue: number;
+  productCost: number;
+  grossProfit: number;
+  expenses: number;
+  netProfit: number;
+};
+
+export type SalesTrendsReport = {
+  reportType: "SALES_TRENDS_REPORT";
+  timezone: "Asia/Kuching";
+  profitAccuracy: "HISTORICAL_ORDER_ITEM_COST";
+  period: {
+    startDate: string;
+    endDate: string;
+  };
+  summary: Omit<SalesTrendDay, "date">;
+  trends: SalesTrendDay[];
+};
+
 export const getMonthlyReport = async (
   year: number,
   month: number
@@ -104,6 +129,20 @@ export const getMonthlyReport = async (
     params: {
       year,
       month,
+    },
+  });
+
+  return response.data.data;
+};
+
+export const getSalesTrendsReport = async (
+  startDate: string,
+  endDate: string
+): Promise<SalesTrendsReport> => {
+  const response = await apiClient.get("/reports/sales-trends", {
+    params: {
+      startDate,
+      endDate,
     },
   });
 

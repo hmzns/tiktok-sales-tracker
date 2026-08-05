@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import prisma from "../src/lib/prisma";
 import { getDashboardSummary } from "../src/services/dashboard.service";
-import { getMonthlySalesReport } from "../src/services/report.service";
+import {
+  getMonthlySalesReport,
+  getSalesTrendsReport,
+} from "../src/services/report.service";
 
 test("dashboard and monthly report query only READY sales orders", async () => {
   const originalSalesOrderFindMany = prisma.salesOrder.findMany;
@@ -254,6 +257,143 @@ test("historical items without allocation and without discount keep gross revenu
     assert.equal(product.discountAmount, 0);
     assert.equal(product.netRevenue, 20);
     assert.equal(product.grossProfit, 12);
+  } finally {
+    prisma.salesOrder.findMany = originalSalesOrderFindMany;
+    prisma.expense.findMany = originalExpenseFindMany;
+  }
+});
+
+test("sales trends allocate discounts, use historical cost, and include zero days", async () => {
+  const originalSalesOrderFindMany = prisma.salesOrder.findMany;
+  const originalExpenseFindMany = prisma.expense.findMany;
+  let orderQuery: unknown;
+  let expenseQuery: unknown;
+
+  prisma.salesOrder.findMany = (async (args: unknown) => {
+    orderQuery = args;
+    return [
+      {
+        id: "stored-allocation-order",
+        createdAt: new Date(2026, 7, 2, 0, 5),
+        discount: 3,
+        items: [
+          {
+            quantity: 2,
+            sellPrice: 10,
+            costPrice: 4,
+            allocatedDiscount: 2,
+          },
+          {
+            quantity: 1,
+            sellPrice: 10,
+            costPrice: 5,
+            allocatedDiscount: 1,
+          },
+        ],
+      },
+      {
+        id: "legacy-order",
+        createdAt: new Date(2026, 7, 3, 13, 30),
+        discount: 2,
+        items: [
+          {
+            quantity: 1,
+            sellPrice: 12,
+            costPrice: 7,
+            allocatedDiscount: null,
+          },
+        ],
+      },
+    ];
+  }) as unknown as typeof prisma.salesOrder.findMany;
+  prisma.expense.findMany = (async (args: unknown) => {
+    expenseQuery = args;
+    return [
+      { amount: 5.25, expenseDate: new Date(2026, 7, 1, 9) },
+      { amount: 2, expenseDate: new Date(2026, 7, 2, 18) },
+    ];
+  }) as unknown as typeof prisma.expense.findMany;
+
+  try {
+    const report = await getSalesTrendsReport({
+      startDate: "2026-08-01",
+      endDate: "2026-08-04",
+    });
+
+    assert.equal(report.timezone, "Asia/Kuching");
+    assert.equal(report.profitAccuracy, "HISTORICAL_ORDER_ITEM_COST");
+    assert.equal(report.trends.length, 4);
+    assert.deepEqual(report.trends[0], {
+      date: "2026-08-01",
+      orderCount: 0,
+      unitsSold: 0,
+      grossRevenue: 0,
+      discountAmount: 0,
+      netRevenue: 0,
+      productCost: 0,
+      grossProfit: 0,
+      expenses: 5.25,
+      netProfit: -5.25,
+    });
+    assert.deepEqual(report.trends[1], {
+      date: "2026-08-02",
+      orderCount: 1,
+      unitsSold: 3,
+      grossRevenue: 30,
+      discountAmount: 3,
+      netRevenue: 27,
+      productCost: 13,
+      grossProfit: 14,
+      expenses: 2,
+      netProfit: 12,
+    });
+    assert.deepEqual(report.trends[2], {
+      date: "2026-08-03",
+      orderCount: 1,
+      unitsSold: 1,
+      grossRevenue: 12,
+      discountAmount: 2,
+      netRevenue: 10,
+      productCost: 7,
+      grossProfit: 3,
+      expenses: 0,
+      netProfit: 3,
+    });
+    assert.equal(report.trends[3].orderCount, 0);
+    assert.deepEqual(report.summary, {
+      orderCount: 2,
+      unitsSold: 4,
+      grossRevenue: 42,
+      discountAmount: 5,
+      netRevenue: 37,
+      productCost: 20,
+      grossProfit: 17,
+      expenses: 7.25,
+      netProfit: 9.75,
+    });
+
+    const salesQuery = orderQuery as {
+      where: {
+        importStatus: string;
+        status: { notIn: string[] };
+        items: { some: Record<string, never> };
+      };
+      select: Record<string, unknown>;
+    };
+    assert.equal(salesQuery.where.importStatus, "READY");
+    assert.deepEqual(salesQuery.where.status.notIn, [
+      "CANCELLED",
+      "REFUNDED",
+    ]);
+    assert.deepEqual(salesQuery.where.items, { some: {} });
+    assert.equal("customerName" in salesQuery.select, false);
+    assert.equal("rawImportData" in salesQuery.select, false);
+
+    const costsQuery = expenseQuery as { select: Record<string, unknown> };
+    assert.deepEqual(costsQuery.select, {
+      amount: true,
+      expenseDate: true,
+    });
   } finally {
     prisma.salesOrder.findMany = originalSalesOrderFindMany;
     prisma.expense.findMany = originalExpenseFindMany;

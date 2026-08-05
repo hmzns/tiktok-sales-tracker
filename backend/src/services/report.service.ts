@@ -5,28 +5,66 @@ import {
   roundMoney,
   toMoneyCents,
 } from "../utils/orderFinancials";
+import {
+  addBusinessDays,
+  BUSINESS_TIME_ZONE,
+  formatBusinessDate,
+  getMonthRange,
+  parseBusinessDate,
+} from "../utils/reportDates";
 
 type MonthlyReportFilter = {
   year?: number;
   month?: number;
 };
 
-const getMonthRange = (year?: number, month?: number) => {
-  const now = new Date();
+type ReportFinancialItem = {
+  quantity: number;
+  sellPrice: number;
+  costPrice: number;
+  allocatedDiscount: number | null;
+};
 
-  const selectedYear = year ?? now.getFullYear();
-  const selectedMonth = month ?? now.getMonth() + 1;
+const getOrderItemFinancials = (
+  items: ReportFinancialItem[],
+  orderDiscount: number
+) => {
+  const grossRevenueCents = items.map((item) =>
+    toMoneyCents(item.quantity * item.sellPrice)
+  );
+  const hasStoredAllocation = items.every(
+    (item) => item.allocatedDiscount != null
+  );
+  let discountCents: number[];
 
-  // The exclusive end boundary avoids overlap between consecutive reports.
-  const startDate = new Date(selectedYear, selectedMonth - 1, 1);
-  const endDate = new Date(selectedYear, selectedMonth, 1);
+  if (hasStoredAllocation) {
+    discountCents = items.map((item, index) =>
+      Math.min(
+        grossRevenueCents[index],
+        Math.max(0, toMoneyCents(item.allocatedDiscount ?? 0))
+      )
+    );
+  } else {
+    const grossSubtotalCents = grossRevenueCents.reduce(
+      (sum, lineAmount) => sum + lineAmount,
+      0
+    );
+    const legacyDiscountCents = Math.min(
+      grossSubtotalCents,
+      Math.max(0, toMoneyCents(orderDiscount))
+    );
 
-  return {
-    year: selectedYear,
-    month: selectedMonth,
-    startDate,
-    endDate,
-  };
+    discountCents =
+      grossSubtotalCents > 0
+        ? allocateDiscountCents(grossRevenueCents, legacyDiscountCents)
+        : grossRevenueCents.map(() => 0);
+  }
+
+  return items.map((item, index) => ({
+    grossRevenueCents: grossRevenueCents[index],
+    discountCents: discountCents[index],
+    productCostCents: toMoneyCents(item.quantity * item.costPrice),
+  }));
 };
 
 export const getMonthlySalesReport = async (
@@ -172,42 +210,14 @@ export const getMonthlySalesReport = async (
   >();
 
   for (const order of orders) {
-    const lineGrossCents = order.items.map((item) =>
-      toMoneyCents(item.quantity * item.sellPrice)
-    );
-    const hasStoredAllocation = order.items.every(
-      (item) => item.allocatedDiscount != null
-    );
-    let orderAllocatedDiscountCents: number[];
-
-    if (hasStoredAllocation) {
-      orderAllocatedDiscountCents = order.items.map((item, index) =>
-        Math.min(
-          lineGrossCents[index],
-          Math.max(0, toMoneyCents(item.allocatedDiscount ?? 0))
-        )
-      );
-    } else {
-      const grossSubtotalCents = lineGrossCents.reduce(
-        (sum, lineAmount) => sum + lineAmount,
-        0
-      );
-      const legacyDiscountCents = Math.min(
-        grossSubtotalCents,
-        Math.max(0, toMoneyCents(order.discount))
-      );
-
-      orderAllocatedDiscountCents =
-        grossSubtotalCents > 0
-          ? allocateDiscountCents(lineGrossCents, legacyDiscountCents)
-          : lineGrossCents.map(() => 0);
-    }
+    const itemFinancials = getOrderItemFinancials(order.items, order.discount);
 
     for (const [itemIndex, item] of order.items.entries()) {
       const existing = productMap.get(item.productId);
-      const itemGrossRevenueCents = lineGrossCents[itemIndex];
-      const itemDiscountCents = orderAllocatedDiscountCents[itemIndex];
-      const itemCostCents = toMoneyCents(item.quantity * item.costPrice);
+      const itemGrossRevenueCents =
+        itemFinancials[itemIndex].grossRevenueCents;
+      const itemDiscountCents = itemFinancials[itemIndex].discountCents;
+      const itemCostCents = itemFinancials[itemIndex].productCostCents;
 
       if (existing) {
         existing.unitsSold += item.quantity;
@@ -398,5 +408,193 @@ export const getMonthlySalesReport = async (
     },
     expenseRows,
     expensesByCategory,
+  };
+};
+
+type SalesTrendsFilter = {
+  startDate: string;
+  endDate: string;
+};
+
+type DailyTrendAccumulator = {
+  date: string;
+  orderCount: number;
+  unitsSold: number;
+  grossRevenueCents: number;
+  discountCents: number;
+  productCostCents: number;
+  expenseCents: number;
+};
+
+export const getSalesTrendsReport = async (filter: SalesTrendsFilter) => {
+  const startDate = parseBusinessDate(filter.startDate);
+  const inclusiveEndDate = parseBusinessDate(filter.endDate);
+
+  if (!startDate || !inclusiveEndDate) {
+    throw new Error("Sales trends received an invalid date range");
+  }
+
+  const endDate = addBusinessDays(inclusiveEndDate, 1);
+  const [orders, expenses] = await Promise.all([
+    prisma.salesOrder.findMany({
+      where: {
+        createdAt: {
+          gte: startDate,
+          lt: endDate,
+        },
+        status: {
+          notIn: ["CANCELLED", "REFUNDED"],
+        },
+        importStatus: "READY",
+        items: {
+          some: {},
+        },
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+      select: {
+        createdAt: true,
+        discount: true,
+        items: {
+          select: {
+            quantity: true,
+            sellPrice: true,
+            costPrice: true,
+            allocatedDiscount: true,
+          },
+        },
+      },
+    }),
+    prisma.expense.findMany({
+      where: {
+        expenseDate: {
+          gte: startDate,
+          lt: endDate,
+        },
+      },
+      orderBy: {
+        expenseDate: "asc",
+      },
+      select: {
+        amount: true,
+        expenseDate: true,
+      },
+    }),
+  ]);
+
+  const dailyMap = new Map<string, DailyTrendAccumulator>();
+
+  for (
+    let cursor = new Date(startDate);
+    cursor < endDate;
+    cursor = addBusinessDays(cursor, 1)
+  ) {
+    const date = formatBusinessDate(cursor);
+    dailyMap.set(date, {
+      date,
+      orderCount: 0,
+      unitsSold: 0,
+      grossRevenueCents: 0,
+      discountCents: 0,
+      productCostCents: 0,
+      expenseCents: 0,
+    });
+  }
+
+  for (const order of orders) {
+    if (order.items.length === 0) {
+      continue;
+    }
+
+    const daily = dailyMap.get(formatBusinessDate(order.createdAt));
+
+    if (!daily) {
+      continue;
+    }
+
+    const itemFinancials = getOrderItemFinancials(order.items, order.discount);
+    daily.orderCount += 1;
+
+    for (const [index, item] of order.items.entries()) {
+      const financials = itemFinancials[index];
+      daily.unitsSold += item.quantity;
+      daily.grossRevenueCents += financials.grossRevenueCents;
+      daily.discountCents += financials.discountCents;
+      daily.productCostCents += financials.productCostCents;
+    }
+  }
+
+  for (const expense of expenses) {
+    const daily = dailyMap.get(formatBusinessDate(expense.expenseDate));
+
+    if (daily) {
+      daily.expenseCents += toMoneyCents(expense.amount);
+    }
+  }
+
+  const trends = Array.from(dailyMap.values()).map((daily) => {
+    const netRevenueCents =
+      daily.grossRevenueCents - daily.discountCents;
+    const grossProfitCents = netRevenueCents - daily.productCostCents;
+    const netProfitCents = grossProfitCents - daily.expenseCents;
+
+    return {
+      date: daily.date,
+      orderCount: daily.orderCount,
+      unitsSold: daily.unitsSold,
+      grossRevenue: fromMoneyCents(daily.grossRevenueCents),
+      discountAmount: fromMoneyCents(daily.discountCents),
+      netRevenue: fromMoneyCents(netRevenueCents),
+      productCost: fromMoneyCents(daily.productCostCents),
+      grossProfit: fromMoneyCents(grossProfitCents),
+      expenses: fromMoneyCents(daily.expenseCents),
+      netProfit: fromMoneyCents(netProfitCents),
+    };
+  });
+
+  const summary = trends.reduce(
+    (totals, daily) => {
+      totals.orderCount += daily.orderCount;
+      totals.unitsSold += daily.unitsSold;
+      totals.grossRevenueCents += toMoneyCents(daily.grossRevenue);
+      totals.discountCents += toMoneyCents(daily.discountAmount);
+      totals.productCostCents += toMoneyCents(daily.productCost);
+      totals.expenseCents += toMoneyCents(daily.expenses);
+      return totals;
+    },
+    {
+      orderCount: 0,
+      unitsSold: 0,
+      grossRevenueCents: 0,
+      discountCents: 0,
+      productCostCents: 0,
+      expenseCents: 0,
+    }
+  );
+  const netRevenueCents =
+    summary.grossRevenueCents - summary.discountCents;
+  const grossProfitCents = netRevenueCents - summary.productCostCents;
+
+  return {
+    reportType: "SALES_TRENDS_REPORT",
+    timezone: BUSINESS_TIME_ZONE,
+    profitAccuracy: "HISTORICAL_ORDER_ITEM_COST" as const,
+    period: {
+      startDate: filter.startDate,
+      endDate: filter.endDate,
+    },
+    summary: {
+      orderCount: summary.orderCount,
+      unitsSold: summary.unitsSold,
+      grossRevenue: fromMoneyCents(summary.grossRevenueCents),
+      discountAmount: fromMoneyCents(summary.discountCents),
+      netRevenue: fromMoneyCents(netRevenueCents),
+      productCost: fromMoneyCents(summary.productCostCents),
+      grossProfit: fromMoneyCents(grossProfitCents),
+      expenses: fromMoneyCents(summary.expenseCents),
+      netProfit: fromMoneyCents(grossProfitCents - summary.expenseCents),
+    },
+    trends,
   };
 };

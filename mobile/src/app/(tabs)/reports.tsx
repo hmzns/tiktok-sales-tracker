@@ -12,11 +12,17 @@ import {
 } from "react-native";
 import { LoadingState } from "../../components/LoadingState";
 import { ErrorState } from "../../components/ErrorState";
-import { getMonthlyReport, MonthlyReport } from "../../api/reports";
+import {
+  getMonthlyReport,
+  getSalesTrendsReport,
+  MonthlyReport,
+  SalesTrendsReport,
+} from "../../api/reports";
 import { EmptyState } from "../../components/EmptyState";
 import { useFocusEffect } from "expo-router";
 import { UI } from "../../constants/ui";
 import { FloatingBackToTop } from "../../components/FloatingBackToTop";
+import { SalesTrendsSection } from "../../components/reports/SalesTrendsSection";
 
 const formatRM = (value: number) => {
   return Number.isFinite(value) ? `RM ${value.toFixed(2)}` : "—";
@@ -28,7 +34,7 @@ const formatPercentage = (value: number | null) => {
     : "—";
 };
 
-type ReportSection = "overview" | "product-performance";
+type ReportSection = "overview" | "product-performance" | "sales-trends";
 type ProductSort =
   | "best-selling"
   | "highest-revenue"
@@ -57,6 +63,15 @@ const monthNames = [
   "December",
 ];
 
+const toDatePart = (value: number) => String(value).padStart(2, "0");
+
+const getMonthDateRange = (year: number, month: number) => ({
+  startDate: `${year}-${toDatePart(month)}-01`,
+  endDate: `${year}-${toDatePart(month)}-${toDatePart(
+    new Date(year, month, 0).getDate()
+  )}`,
+});
+
 export default function ReportsScreen() {
   const now = new Date();
   const { width } = useWindowDimensions();
@@ -66,6 +81,8 @@ export default function ReportsScreen() {
   const [month, setMonth] = useState(now.getMonth() + 1);
 
   const [report, setReport] = useState<MonthlyReport | null>(null);
+  const [salesTrends, setSalesTrends] =
+    useState<SalesTrendsReport | null>(null);
   const [section, setSection] = useState<ReportSection>("overview");
   const [productSort, setProductSort] =
     useState<ProductSort>("best-selling");
@@ -73,8 +90,11 @@ export default function ReportsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [salesTrendsLoading, setSalesTrendsLoading] = useState(false);
+  const [salesTrendsError, setSalesTrendsError] = useState<string | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const salesTrendsRequestRef = useRef(0);
 
   const loadReport = useCallback(async () => {
     try {
@@ -104,6 +124,30 @@ export default function ReportsScreen() {
     }
   }, [month, year]);
 
+  const loadSalesTrends = useCallback(async () => {
+    const requestId = salesTrendsRequestRef.current + 1;
+    salesTrendsRequestRef.current = requestId;
+    setSalesTrendsLoading(true);
+    setSalesTrendsError(null);
+    const { startDate, endDate } = getMonthDateRange(year, month);
+
+    try {
+      const result = await getSalesTrendsReport(startDate, endDate);
+
+      if (requestId === salesTrendsRequestRef.current) {
+        setSalesTrends(result);
+      }
+    } catch {
+      if (requestId === salesTrendsRequestRef.current) {
+        setSalesTrendsError("Failed to load sales trends");
+      }
+    } finally {
+      if (requestId === salesTrendsRequestRef.current) {
+        setSalesTrendsLoading(false);
+      }
+    }
+  }, [month, year]);
+
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
@@ -111,9 +155,21 @@ export default function ReportsScreen() {
     }, [loadReport])
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      if (section === "sales-trends") {
+        loadSalesTrends();
+      }
+    }, [loadSalesTrends, section])
+  );
+
   const onRefresh = () => {
     setRefreshing(true);
     loadReport();
+
+    if (section === "sales-trends") {
+      loadSalesTrends();
+    }
   };
 
   const goPreviousMonth = () => {
@@ -479,6 +535,24 @@ export default function ReportsScreen() {
             Product Performance
           </Text>
         </Pressable>
+        <Pressable
+          accessibilityRole="tab"
+          accessibilityState={{ selected: section === "sales-trends" }}
+          style={[
+            styles.sectionControl,
+            section === "sales-trends" && styles.sectionControlActive,
+          ]}
+          onPress={() => setSection("sales-trends")}
+        >
+          <Text
+            style={[
+              styles.sectionControlText,
+              section === "sales-trends" && styles.sectionControlTextActive,
+            ]}
+          >
+            Sales Trends
+          </Text>
+        </Pressable>
       </View>
 
       <View style={styles.monthControls}>
@@ -655,7 +729,7 @@ export default function ReportsScreen() {
         )}
       </View>
       </>
-      ) : (
+      ) : section === "product-performance" ? (
       <>
         <View style={styles.exportPanel}>
           <Text style={styles.exportPanelTitle}>Export data</Text>
@@ -892,6 +966,16 @@ export default function ReportsScreen() {
           )}
         </View>
       </>
+      ) : (
+        <SalesTrendsSection
+          report={salesTrends}
+          loading={salesTrendsLoading}
+          error={salesTrendsError}
+          isWideLayout={isWideLayout}
+          monthLabel={monthNames[month - 1]}
+          year={year}
+          onRetry={loadSalesTrends}
+        />
       )}
     </ScrollView>
     <FloatingBackToTop

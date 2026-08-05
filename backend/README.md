@@ -207,13 +207,21 @@ GET /dashboard/summary?year=2026&month=7
 
 ```http
 GET /reports/monthly
+GET /reports/sales-trends
 ```
 
-Example:
+Examples:
 
 ```http
 GET /reports/monthly?year=2026&month=7
+GET /reports/sales-trends?startDate=2026-07-01&endDate=2026-07-31
 ```
+
+Report month and day boundaries use the backend process's local timezone. The
+application's business timezone is Malaysia time (`Asia/Kuching`, UTC+08:00),
+so backend deployments should set `TZ=Asia/Kuching`. The monthly Overview and
+Sales Trends report share this boundary behaviour; date-only trend parameters
+are interpreted as inclusive local business dates.
 
 ## Example: Create Product
 

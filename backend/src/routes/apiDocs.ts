@@ -178,6 +178,13 @@ router.get("/", (req, res) => {
               "Get export-ready monthly sales and product performance reports",
             query: ["year", "month"],
           },
+          {
+            method: "GET",
+            path: "/reports/sales-trends",
+            description:
+              "Get zero-filled daily sales, discounts, costs, expenses, and profit trends",
+            query: ["startDate", "endDate"],
+          },
         ],
         tiktokShop: [
           {
