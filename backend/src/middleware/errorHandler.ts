@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { Prisma } from "@prisma/client";
 import { AppError } from "../utils/AppError";
 
 export const errorHandler = (
@@ -18,6 +19,16 @@ export const errorHandler = (
     return res.status(error.statusCode).json({
       success: false,
       message: error.message,
+    });
+  }
+
+  if (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2028"
+  ) {
+    return res.status(503).json({
+      success: false,
+      message: "Order completion timed out. Please try again.",
     });
   }
 

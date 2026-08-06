@@ -46,6 +46,7 @@ type SelectedImportedOrderItem = {
 };
 
 type ApiError = {
+  code?: string;
   response?: {
     status?: number;
     data?: {
@@ -63,6 +64,10 @@ const getCompletionErrorMessage = (error: unknown) => {
   const responseMessage = apiError.response?.data?.message;
   const message =
     typeof responseMessage === "string" ? responseMessage : "";
+
+  if (apiError.code === "ECONNABORTED" || apiError.code === "ETIMEDOUT") {
+    return "Order completion is taking longer than expected. Check the order status before trying again.";
+  }
 
   if (!apiError.response) {
     return "Unable to reach the server. Check your connection and try again.";
@@ -93,6 +98,10 @@ const getCompletionErrorMessage = (error: unknown) => {
   }
 
   if (/discount|subtotal/i.test(message)) {
+    return message;
+  }
+
+  if (status === 503 && /timed out/i.test(message)) {
     return message;
   }
 

@@ -240,7 +240,8 @@ export const completeImportedOrder = async (
 ): Promise<SalesOrder> => {
   const response = await apiClient.post(
     `/orders/${salesOrderId}/complete-import`,
-    data
+    data,
+    { timeout: 30_000 }
   );
 
   return response.data.data;

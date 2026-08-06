@@ -54,6 +54,11 @@ export type OrderTransactionRunner = <T>(
   callback: (tx: Prisma.TransactionClient) => Promise<T>
 ) => Promise<T>;
 
+const COMPLETE_IMPORTED_ORDER_TRANSACTION_OPTIONS = {
+  maxWait: 5_000,
+  timeout: 20_000,
+} as const;
+
 const publicOrderOmit = {
   rawImportData: true,
 } satisfies Prisma.SalesOrderOmit;
@@ -346,7 +351,10 @@ export const completeImportedOrder = async (
   id: string,
   data: CompleteImportedOrderInput,
   runTransaction: OrderTransactionRunner = (callback) =>
-    prisma.$transaction(callback)
+    prisma.$transaction(
+      callback,
+      COMPLETE_IMPORTED_ORDER_TRANSACTION_OPTIONS
+    )
 ) => {
   return runTransaction(async (tx) => {
     const order = await tx.salesOrder.findUnique({
