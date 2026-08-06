@@ -10,7 +10,11 @@ export function FieldError({ message }: FieldErrorProps) {
     return null;
   }
 
-  return <Text style={styles.errorText}>{message}</Text>;
+  return (
+    <Text accessibilityRole="alert" aria-live="polite" style={styles.errorText}>
+      {message}
+    </Text>
+  );
 }
 
 const styles = StyleSheet.create({

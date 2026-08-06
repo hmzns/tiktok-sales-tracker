@@ -36,10 +36,7 @@ export const getDashboardSummary = async (filter: DashboardFilter) => {
         gte: startDate,
         lt: endDate,
       },
-      status: {
-        notIn: ["CANCELLED", "REFUNDED"],
-      },
-      importStatus: "READY",
+      status: "COMPLETED",
     },
     include: {
       items: {

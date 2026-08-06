@@ -1,20 +1,31 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { UI } from "../constants/ui";
 
 type EmptyStateProps = {
   title: string;
   message: string;
+  actionLabel?: string;
+  onAction?: () => void;
 };
 
-export function EmptyState({ title, message }: EmptyStateProps) {
+export function EmptyState({ title, message, actionLabel, onAction }: EmptyStateProps) {
   return (
     <View style={styles.container}>
       <View style={styles.icon}>
         <View style={styles.iconLine} />
         <View style={styles.iconLineShort} />
       </View>
-      <Text style={styles.title}>{title}</Text>
+      <Text accessibilityRole="header" style={styles.title}>{title}</Text>
       <Text style={styles.message}>{message}</Text>
+      {actionLabel && onAction ? (
+        <Pressable
+          onPress={onAction}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
+        >
+          <Text style={styles.actionText}>{actionLabel}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -65,4 +76,14 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
   },
+  action: {
+    minHeight: UI.control.minTouchTarget,
+    justifyContent: "center",
+    paddingHorizontal: 18,
+    marginTop: 16,
+    borderRadius: UI.radius.small,
+    backgroundColor: UI.colors.primary,
+  },
+  actionPressed: { backgroundColor: UI.colors.primaryPressed },
+  actionText: { color: UI.colors.onDark, fontSize: 13, fontWeight: "800" },
 });

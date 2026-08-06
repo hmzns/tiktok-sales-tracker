@@ -15,6 +15,8 @@ import { getProducts, Product } from "../api/products";
 import { FieldError } from "../components/FieldError";
 import { FloatingBackToTop } from "../components/FloatingBackToTop";
 import { showSuccessMessage } from "../utils/showSuccessMessage";
+import { UI } from "../constants/ui";
+import { sharedStyles } from "../constants/sharedStyles";
 import {
   calculateOrderDiscountPreview,
   DISCOUNT_OPTIONS,
@@ -62,11 +64,8 @@ export default function AddOrderScreen() {
 
       const result = await getProducts(1, 100, "", true);
       setProducts(result.products);
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.message ?? "Failed to load products";
-
-      Alert.alert("Error", message);
+    } catch {
+      Alert.alert("Unable to load products", "Please check your connection and try again.");
     } finally {
       setLoadingProducts(false);
     }
@@ -246,7 +245,7 @@ export default function AddOrderScreen() {
         orderNumber: orderNumber.trim() || undefined,
         customerName: customerName.trim() || undefined,
         platform: "MANUAL",
-        status: "PAID",
+        status: "COMPLETED",
         discount: {
           type: discountType,
           value: discountPreview.enteredValue,
@@ -262,11 +261,8 @@ export default function AddOrderScreen() {
       showSuccessMessage("Order created successfully.");
 
       router.replace("/orders" as any);
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.message ?? "Failed to create order";
-
-      Alert.alert("Error", message);
+    } catch {
+      Alert.alert("Save failed", "Unable to create this order. Please review the details and try again.");
     } finally {
       setSaving(false);
     }
@@ -288,7 +284,7 @@ export default function AddOrderScreen() {
       }
       scrollEventThrottle={16}
     >
-      <Text style={styles.title}>Create Order</Text>
+      <Text accessibilityRole="header" style={styles.title}>Order details</Text>
       <Text style={styles.subtitle}>
         Add one or more products into this order.
       </Text>
@@ -297,6 +293,7 @@ export default function AddOrderScreen() {
       <TextInput
         style={styles.input}
         placeholder="Optional order number"
+        placeholderTextColor={UI.colors.inkSubtle}
         value={orderNumber}
         onChangeText={(value) => {
           setOrderNumber(value);
@@ -309,6 +306,7 @@ export default function AddOrderScreen() {
       <TextInput
         style={styles.input}
         placeholder="Optional customer name"
+        placeholderTextColor={UI.colors.inkSubtle}
         value={customerName}
         onChangeText={(value) => {
           setCustomerName(value);
@@ -346,6 +344,8 @@ export default function AddOrderScreen() {
                     setSelectedProductId(product.id);
                     setFieldErrors((current) => ({ ...current, product: "" }));
                   }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
                 >
                   <Text
                     style={[
@@ -375,16 +375,18 @@ export default function AddOrderScreen() {
         <TextInput
           style={styles.input}
           placeholder="Example: 1"
+          placeholderTextColor={UI.colors.inkSubtle}
           value={quantity}
           onChangeText={(value) => {
             setQuantity(value);
             setFieldErrors((current) => ({ ...current, quantity: "" }));
           }}
           keyboardType="numeric"
+          inputMode="numeric"
         />
         <FieldError message={fieldErrors.quantity} />
 
-        <Pressable style={styles.secondaryButton} onPress={handleAddItem}>
+        <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={handleAddItem}>
           <Text style={styles.secondaryButtonText}>Add Item</Text>
         </Pressable>
       </View>
@@ -407,6 +409,8 @@ export default function AddOrderScreen() {
                 <Pressable
                   style={styles.removeButton}
                   onPress={() => handleRemoveItem(item.productId)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${item.name}`}
                 >
                   <Text style={styles.removeButtonText}>Remove</Text>
                 </Pressable>
@@ -438,6 +442,8 @@ export default function AddOrderScreen() {
                 setDiscountType(option.type);
                 setDiscount("0");
               }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: discountType === option.type }}
             >
               <Text
                 style={[
@@ -460,6 +466,7 @@ export default function AddOrderScreen() {
             <TextInput
               style={styles.input}
               placeholder={discountType === "FIXED" ? "Example: 10.00" : "Example: 10"}
+              placeholderTextColor={UI.colors.inkSubtle}
               value={discount}
               onChangeText={setDiscount}
               keyboardType="decimal-pad"
@@ -473,9 +480,11 @@ export default function AddOrderScreen() {
       <TextInput
         style={styles.input}
         placeholder="Example: 0"
+        placeholderTextColor={UI.colors.inkSubtle}
         value={shippingFee}
         onChangeText={setShippingFee}
-        keyboardType="numeric"
+        keyboardType="decimal-pad"
+        inputMode="decimal"
       />
       <FieldError
         message={
@@ -520,13 +529,15 @@ export default function AddOrderScreen() {
         ]}
         onPress={handleCreateOrder}
         disabled={saving || !orderFinancialsAreValid}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: saving || !orderFinancialsAreValid, busy: saving }}
       >
         <Text style={styles.saveButtonText}>
           {saving ? "Creating..." : "Create Order"}
         </Text>
       </Pressable>
 
-      <Pressable style={styles.cancelButton} onPress={() => router.back()}>
+      <Pressable accessibilityRole="button" style={styles.cancelButton} onPress={() => router.back()}>
         <Text style={styles.cancelButtonText}>Cancel</Text>
       </Pressable>
     </ScrollView>
@@ -539,41 +550,28 @@ export default function AddOrderScreen() {
 }
 
 const styles = StyleSheet.create({
-  screenShell: { flex: 1, backgroundColor: "#f6f6f6" },
+  screenShell: { flex: 1, backgroundColor: UI.colors.canvas },
   container: {
-    padding: 20,
-    backgroundColor: "#f6f6f6",
+    ...sharedStyles.formContent,
+    backgroundColor: UI.colors.canvas,
     flexGrow: 1,
   },
   title: {
-    fontSize: 26,
-    fontWeight: "900",
-    marginBottom: 4,
+    ...sharedStyles.pageTitle,
   },
   subtitle: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 20,
+    ...sharedStyles.pageSubtitle,
   },
   label: {
-    fontSize: 13,
-    fontWeight: "800",
-    marginBottom: 6,
-    color: "#333",
+    ...sharedStyles.label,
   },
   input: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 14,
+    ...sharedStyles.input,
+    ...sharedStyles.inputWeb,
     marginBottom: 14,
   },
   formCard: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 16,
+    ...sharedStyles.card,
     marginBottom: 16,
   },
   discountOptions: {
@@ -583,28 +581,26 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   discountOption: {
-    minHeight: 40,
+    minHeight: UI.control.minTouchTarget,
     justifyContent: "center",
     paddingHorizontal: 12,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#ddd",
-    backgroundColor: "#f6f6f6",
+    borderColor: UI.colors.borderStrong,
+    backgroundColor: UI.colors.surfaceMuted,
   },
   discountOptionActive: {
-    backgroundColor: "#111",
-    borderColor: "#111",
+    backgroundColor: UI.colors.ink,
+    borderColor: UI.colors.ink,
   },
   discountOptionText: {
-    color: "#666",
+    color: UI.colors.inkMuted,
     fontSize: 12,
     fontWeight: "800",
   },
-  discountOptionTextActive: { color: "#fff" },
+  discountOptionTextActive: { color: UI.colors.onDark },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: "900",
-    marginBottom: 12,
+    ...sharedStyles.sectionTitle,
   },
   loadingBox: {
     alignItems: "center",
@@ -612,14 +608,14 @@ const styles = StyleSheet.create({
   },
   smallText: {
     marginTop: 8,
-    color: "#666",
+    color: UI.colors.inkMuted,
     fontSize: 13,
   },
   emptyText: {
-    backgroundColor: "#f6f6f6",
+    backgroundColor: UI.colors.surfaceMuted,
     borderRadius: 10,
     padding: 14,
-    color: "#666",
+    color: UI.colors.inkMuted,
     textAlign: "center",
     marginBottom: 14,
   },
@@ -627,44 +623,46 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   productOption: {
-    backgroundColor: "#f6f6f6",
+    backgroundColor: UI.colors.surfaceMuted,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: UI.colors.borderStrong,
     borderRadius: 10,
     padding: 12,
     marginBottom: 10,
   },
   selectedProductOption: {
-    backgroundColor: "#111",
-    borderColor: "#111",
+    backgroundColor: UI.colors.ink,
+    borderColor: UI.colors.ink,
   },
   productName: {
     fontSize: 14,
     fontWeight: "900",
-    color: "#111",
+    color: UI.colors.ink,
     marginBottom: 4,
   },
   productMeta: {
     fontSize: 12,
-    color: "#666",
+    color: UI.colors.inkMuted,
   },
   selectedProductText: {
-    color: "#fff",
+    color: UI.colors.onDark,
   },
   secondaryButton: {
-    backgroundColor: "#fff",
+    minHeight: UI.control.minTouchTarget,
+    justifyContent: "center",
+    backgroundColor: UI.colors.surface,
     borderWidth: 1,
-    borderColor: "#111",
+    borderColor: UI.colors.borderStrong,
     borderRadius: 10,
     padding: 12,
     alignItems: "center",
   },
   secondaryButtonText: {
-    color: "#111",
+    color: UI.colors.ink,
     fontWeight: "900",
   },
   itemCard: {
-    backgroundColor: "#f6f6f6",
+    backgroundColor: UI.colors.surfaceMuted,
     borderRadius: 10,
     padding: 12,
     marginBottom: 10,
@@ -685,30 +683,30 @@ const styles = StyleSheet.create({
   },
   itemMeta: {
     fontSize: 12,
-    color: "#666",
+    color: UI.colors.inkMuted,
     marginBottom: 4,
   },
   itemTotal: {
     fontSize: 13,
     fontWeight: "900",
-    color: "#111",
+    color: UI.colors.ink,
   },
   removeButton: {
-    backgroundColor: "#ffecec",
+    minHeight: UI.control.minTouchTarget,
+    justifyContent: "center",
+    backgroundColor: UI.colors.dangerSoft,
     borderRadius: 8,
     paddingVertical: 8,
     paddingHorizontal: 10,
     alignSelf: "flex-start",
   },
   removeButtonText: {
-    color: "#cc3333",
+    color: UI.colors.danger,
     fontWeight: "800",
     fontSize: 12,
   },
   summaryCard: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 16,
+    ...sharedStyles.card,
     marginBottom: 16,
   },
   summaryTitle: {
@@ -722,18 +720,18 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   summaryLabel: {
-    color: "#666",
+    color: UI.colors.inkMuted,
     fontWeight: "700",
   },
   summaryValue: {
-    color: "#111",
+    color: UI.colors.ink,
     fontWeight: "800",
   },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     borderTopWidth: 1,
-    borderTopColor: "#eee",
+    borderTopColor: UI.colors.border,
     paddingTop: 12,
     marginTop: 4,
   },
@@ -746,16 +744,18 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   saveButton: {
-    backgroundColor: "#111",
-    borderRadius: 10,
-    padding: 14,
+    minHeight: UI.control.minTouchTarget,
+    justifyContent: "center",
+    backgroundColor: UI.colors.primary,
+    borderRadius: UI.radius.small,
+    padding: 12,
     alignItems: "center",
   },
   disabledButton: {
     opacity: 0.6,
   },
   saveButtonText: {
-    color: "#fff",
+    color: UI.colors.onDark,
     fontWeight: "900",
     fontSize: 15,
   },
@@ -766,7 +766,9 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: UI.colors.borderStrong,
+    minHeight: UI.control.minTouchTarget,
+    justifyContent: "center",
   },
   cancelButtonText: {
     fontSize: 15,

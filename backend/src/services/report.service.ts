@@ -82,10 +82,7 @@ export const getMonthlySalesReport = async (
         gte: startDate,
         lt: endDate,
       },
-      status: {
-        notIn: ["CANCELLED", "REFUNDED"],
-      },
-      importStatus: "READY",
+      status: "COMPLETED",
     },
     orderBy: {
       createdAt: "asc",
@@ -442,10 +439,7 @@ export const getSalesTrendsReport = async (filter: SalesTrendsFilter) => {
           gte: startDate,
           lt: endDate,
         },
-        status: {
-          notIn: ["CANCELLED", "REFUNDED"],
-        },
-        importStatus: "READY",
+        status: "COMPLETED",
         items: {
           some: {},
         },

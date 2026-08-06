@@ -23,6 +23,7 @@ import { useFocusEffect } from "expo-router";
 import { UI } from "../../constants/ui";
 import { FloatingBackToTop } from "../../components/FloatingBackToTop";
 import { SalesTrendsSection } from "../../components/reports/SalesTrendsSection";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const formatRM = (value: number) => {
   return Number.isFinite(value) ? `RM ${value.toFixed(2)}` : "—";
@@ -33,6 +34,11 @@ const formatPercentage = (value: number | null) => {
     ? `${value.toFixed(1)}%`
     : "—";
 };
+
+const formatDifference = (value: number | null) =>
+  value !== null && Number.isFinite(value)
+    ? `${value >= 0 ? "↑" : "↓"} ${Math.abs(value).toFixed(1)}%`
+    : "—";
 
 type ReportSection = "overview" | "product-performance" | "sales-trends";
 type ProductSort =
@@ -231,8 +237,8 @@ export default function ReportsScreen() {
   if (loading) {
     return (
       <LoadingState
-        title="Generating all the numbers..."
-        message="Sit back and relax, make a cup of coffee or layan Aleena."
+        title="Preparing report"
+        message="Calculating revenue, profit, expenses, and product performance."
       />
     );
   }
@@ -242,7 +248,7 @@ export default function ReportsScreen() {
       <View style={styles.screen}>
         <ErrorState
           title="Failed to load report"
-          message="Please check your backend connection and try again."
+          message="Please check your connection and try again."
           onRetry={loadReport}
         />
       </View>
@@ -477,7 +483,7 @@ export default function ReportsScreen() {
   };
 
   return (
-    <View style={styles.screenShell}>
+    <SafeAreaView edges={["top"]} style={styles.screenShell}>
     <ScrollView
       ref={scrollRef}
       style={styles.screen}
@@ -491,7 +497,7 @@ export default function ReportsScreen() {
       }
     >
       <View style={styles.pageHeader}>
-        <Text style={styles.title}>Monthly report</Text>
+        <Text accessibilityRole="header" style={styles.title}>Monthly report</Text>
         <Text style={styles.subtitle}>Revenue, profit, and operating insights</Text>
       </View>
 
@@ -506,6 +512,9 @@ export default function ReportsScreen() {
           onPress={() => setSection("overview")}
         >
           <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
             style={[
               styles.sectionControlText,
               section === "overview" && styles.sectionControlTextActive,
@@ -556,14 +565,14 @@ export default function ReportsScreen() {
       </View>
 
       <View style={styles.monthControls}>
-        <Pressable style={styles.monthButton} onPress={goPreviousMonth}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Previous month" style={styles.monthButton} onPress={goPreviousMonth}>
           <Text style={styles.monthButtonText}>←</Text>
         </Pressable>
         <View style={styles.monthCurrent}>
           <Text style={styles.monthLabel}>{monthNames[month - 1]}</Text>
           <Text style={styles.yearLabel}>{year}</Text>
         </View>
-        <Pressable style={styles.monthButton} onPress={goNextMonth}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Next month" style={styles.monthButton} onPress={goNextMonth}>
           <Text style={styles.monthButtonText}>→</Text>
         </Pressable>
       </View>
@@ -573,12 +582,12 @@ export default function ReportsScreen() {
       <View style={styles.exportPanel}>
         <Text style={styles.exportPanelTitle}>Export data</Text>
         <View style={styles.exportActions}>
-          <Pressable style={styles.exportButton} onPress={handleExportCsv}>
+          <Pressable accessibilityRole="button" style={styles.exportButton} onPress={handleExportCsv}>
             <Text style={styles.exportButtonText}>
               Full report · {monthNames[month - 1]} {year}
             </Text>
           </Pressable>
-          <Pressable style={styles.secondaryExportButton} onPress={handleExportOrdersCsv}>
+          <Pressable accessibilityRole="button" style={styles.secondaryExportButton} onPress={handleExportOrdersCsv}>
             <Text style={styles.secondaryExportButtonText}>Orders</Text>
           </Pressable>
         </View>
@@ -588,6 +597,9 @@ export default function ReportsScreen() {
         <View>
           <Text style={styles.netProfitLabel}>Net Profit</Text>
           <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
             style={
               report.summary.netProfit >= 0
                 ? styles.positiveValue
@@ -599,15 +611,13 @@ export default function ReportsScreen() {
         </View>
         <View style={styles.netProfitComparisonBox}>
           <Text style={styles.netProfitComparisonLabel}>vs previous month</Text>
-          <Text style={[
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[
             styles.netProfitComparisonValue,
             (netProfitDifference ?? 0) >= 0
               ? styles.positiveComparison
               : styles.negativeComparison,
           ]}>
-            {netProfitDifference === null
-              ? "—"
-              : `${netProfitDifference >= 0 ? "↑" : "↓"} ${Math.abs(netProfitDifference).toFixed(1)}%`}
+            {formatDifference(netProfitDifference)}
           </Text>
         </View>
       </View>
@@ -736,6 +746,7 @@ export default function ReportsScreen() {
           <Pressable
             style={styles.exportButton}
             onPress={handleExportProductPerformanceCsv}
+            accessibilityRole="button"
           >
             <Text style={styles.exportButtonText}>
               Product performance · {monthNames[month - 1]} {year}
@@ -863,6 +874,8 @@ export default function ReportsScreen() {
                   productSort === option.key && styles.sortButtonActive,
                 ]}
                 onPress={() => setProductSort(option.key)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: productSort === option.key }}
               >
                 <Text
                   style={[
@@ -982,7 +995,7 @@ export default function ReportsScreen() {
       visible={showBackToTop}
       onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
     />
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -994,7 +1007,7 @@ const styles = StyleSheet.create({
   screenShell: { flex: 1, backgroundColor: UI.colors.canvas },
   content: {
     width: "100%",
-    maxWidth: 760,
+    maxWidth: UI.layout.contentMaxWidth,
     alignSelf: "center",
     padding: 20,
     paddingTop: 28,
@@ -1045,7 +1058,7 @@ const styles = StyleSheet.create({
   },
   sectionControl: {
     flex: 1,
-    minHeight: 40,
+    minHeight: UI.control.minTouchTarget,
     paddingHorizontal: 10,
     alignItems: "center",
     justifyContent: "center",
@@ -1101,10 +1114,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
+    flexWrap: "wrap",
     ...UI.shadow,
   },
   netProfitLabel: { color: "#D0D5DD", fontSize: 13, marginBottom: 8 },
-  netProfitComparisonBox: { alignItems: "flex-end" },
+  netProfitComparisonBox: { alignItems: "flex-end", flexGrow: 1, minWidth: 130 },
   netProfitComparisonLabel: { color: "#D0D5DD", fontSize: 12, marginBottom: 8 },
   netProfitComparisonValue: { fontSize: 24, fontWeight: "800", textAlign: "right" },
   positiveComparison: { color: "#6CE9A6" },
@@ -1206,13 +1220,17 @@ const styles = StyleSheet.create({
   },
   exportButton: {
     flex: 1,
-    backgroundColor: UI.colors.primary,
+    minHeight: UI.control.minTouchTarget,
+    justifyContent: "center",
+    backgroundColor: UI.colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
     borderRadius: UI.radius.small,
     paddingVertical: 11,
     alignItems: "center",
   },
   exportButtonText: {
-    color: "#fff",
+    color: UI.colors.ink,
     fontSize: 12,
     fontWeight: "700",
   },
@@ -1222,6 +1240,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: UI.colors.border,
     borderRadius: UI.radius.small,
+    minHeight: UI.control.minTouchTarget,
+    justifyContent: "center",
     paddingVertical: 11,
     alignItems: "center",
   },
@@ -1331,7 +1351,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   sortButton: {
-    minHeight: 36,
+    minHeight: UI.control.minTouchTarget,
     justifyContent: "center",
     paddingHorizontal: 12,
     borderRadius: UI.radius.pill,

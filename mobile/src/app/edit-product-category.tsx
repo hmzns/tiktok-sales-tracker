@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -10,6 +9,10 @@ import {
   View,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { LoadingState } from "../components/LoadingState";
+import { UI } from "../constants/ui";
+import { sharedStyles } from "../constants/sharedStyles";
+import { showSuccessMessage } from "../utils/showSuccessMessage";
 
 import {
   getProductCategoryById,
@@ -37,11 +40,8 @@ export default function EditProductCategoryScreen() {
       setName(category.name);
       setDescription(category.description ?? "");
       setIsActive(category.isActive);
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.message ?? "Failed to load category";
-
-      Alert.alert("Error", message);
+    } catch {
+      Alert.alert("Unable to load category", "Please check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -64,12 +64,11 @@ export default function EditProductCategoryScreen() {
         isActive,
       });
 
-      router.replace("/product-categories" as any);
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.message ?? "Failed to update category";
+      showSuccessMessage("Category updated successfully.");
 
-      Alert.alert("Error", message);
+      router.replace("/product-categories" as any);
+    } catch {
+      Alert.alert("Save failed", "Unable to update this category. Please review the details and try again.");
     } finally {
       setSaving(false);
     }
@@ -80,23 +79,20 @@ export default function EditProductCategoryScreen() {
   }, [categoryId]);
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator />
-        <Text style={styles.loadingText}>Loading category...</Text>
-      </View>
-    );
+    return <LoadingState title="Loading category" message="Getting the latest category details." />;
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Edit Category</Text>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container} automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
+      <Text accessibilityRole="header" style={styles.title}>Category details</Text>
       <Text style={styles.subtitle}>Update category details below.</Text>
+      <View style={styles.formCard}>
 
       <Text style={styles.label}>Category Name</Text>
       <TextInput
         style={styles.input}
         placeholder="Example: Lipstick"
+        placeholderTextColor={UI.colors.inkSubtle}
         value={name}
         onChangeText={setName}
       />
@@ -105,6 +101,7 @@ export default function EditProductCategoryScreen() {
       <TextInput
         style={[styles.input, styles.textArea]}
         placeholder="Optional description"
+        placeholderTextColor={UI.colors.inkSubtle}
         value={description}
         onChangeText={setDescription}
         multiline
@@ -119,6 +116,8 @@ export default function EditProductCategoryScreen() {
             isActive && styles.activeStatusButton,
           ]}
           onPress={() => setIsActive(true)}
+          accessibilityRole="button"
+          accessibilityState={{ selected: isActive }}
         >
           <Text
             style={[
@@ -136,6 +135,8 @@ export default function EditProductCategoryScreen() {
             !isActive && styles.inactiveStatusButton,
           ]}
           onPress={() => setIsActive(false)}
+          accessibilityRole="button"
+          accessibilityState={{ selected: !isActive }}
         >
           <Text
             style={[
@@ -152,53 +153,37 @@ export default function EditProductCategoryScreen() {
         style={[styles.saveButton, saving && styles.disabledButton]}
         onPress={handleUpdateCategory}
         disabled={saving}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: saving, busy: saving }}
       >
         <Text style={styles.saveButtonText}>
           {saving ? "Saving..." : "Save Changes"}
         </Text>
       </Pressable>
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: { ...sharedStyles.screen },
   container: {
-    padding: 20,
-    backgroundColor: "#f6f6f6",
+    ...sharedStyles.formContent,
     flexGrow: 1,
   },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadingText: {
-    marginTop: 10,
-    color: "#666",
-  },
+  formCard: { ...sharedStyles.card },
   title: {
-    fontSize: 26,
-    fontWeight: "900",
-    marginBottom: 4,
+    ...sharedStyles.pageTitle,
   },
   subtitle: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 20,
+    ...sharedStyles.pageSubtitle,
   },
   label: {
-    fontSize: 13,
-    fontWeight: "800",
-    marginBottom: 6,
-    color: "#333",
+    ...sharedStyles.label,
   },
   input: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 14,
+    ...sharedStyles.input,
+    ...sharedStyles.inputWeb,
     marginBottom: 14,
   },
   textArea: {
@@ -212,34 +197,38 @@ const styles = StyleSheet.create({
   },
   statusButton: {
     flex: 1,
-    backgroundColor: "#fff",
+    minHeight: UI.control.minTouchTarget,
+    justifyContent: "center",
+    backgroundColor: UI.colors.surface,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: UI.colors.borderStrong,
     borderRadius: 10,
     padding: 12,
     alignItems: "center",
   },
   activeStatusButton: {
-    backgroundColor: "#e8f8ee",
-    borderColor: "#1f8f46",
+    backgroundColor: UI.colors.successSoft,
+    borderColor: UI.colors.success,
   },
   inactiveStatusButton: {
-    backgroundColor: "#ffecec",
-    borderColor: "#cc3333",
+    backgroundColor: UI.colors.dangerSoft,
+    borderColor: UI.colors.danger,
   },
   statusButtonText: {
     fontSize: 13,
     fontWeight: "800",
-    color: "#333",
+    color: UI.colors.ink,
   },
   activeStatusButtonText: {
-    color: "#1f8f46",
+    color: UI.colors.success,
   },
   inactiveStatusButtonText: {
-    color: "#cc3333",
+    color: UI.colors.danger,
   },
   saveButton: {
-    backgroundColor: "#111",
+    minHeight: UI.control.minTouchTarget,
+    justifyContent: "center",
+    backgroundColor: UI.colors.primary,
     borderRadius: 10,
     padding: 14,
     alignItems: "center",
@@ -249,7 +238,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   saveButtonText: {
-    color: "#fff",
+    color: UI.colors.onDark,
     fontWeight: "900",
     fontSize: 15,
   },

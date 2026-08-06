@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -16,6 +15,17 @@ import {
   getExpenseById,
   updateExpense,
 } from "../api/expenses";
+import { LoadingState } from "../components/LoadingState";
+import { AppButton } from "../components/ui/AppButton";
+import {
+  DatePickerModal,
+  formatBusinessDateLabel,
+  parseBusinessDate,
+  toBusinessDateIso,
+} from "../components/ui/DatePickerModal";
+import { UI } from "../constants/ui";
+import { sharedStyles } from "../constants/sharedStyles";
+import { showSuccessMessage } from "../utils/showSuccessMessage";
 
 const EXPENSE_CATEGORIES: ExpenseCategory[] = [
   "PACKAGING",
@@ -38,6 +48,7 @@ export default function EditExpenseScreen() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
 
   const loadExpense = async () => {
     if (!expenseId) return;
@@ -51,12 +62,13 @@ export default function EditExpenseScreen() {
       setAmount(String(expense.amount));
       setCategory(expense.category);
       setDescription(expense.description ?? "");
-      setExpenseDate(new Date(expense.expenseDate).toISOString().slice(0, 10));
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.message ?? "Failed to load expense";
-
-      Alert.alert("Error", message);
+      setExpenseDate(
+        parseBusinessDate(expense.expenseDate)
+          ? expense.expenseDate.slice(0, 10)
+          : ""
+      );
+    } catch {
+      Alert.alert("Unable to load expense", "Please check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -82,10 +94,10 @@ export default function EditExpenseScreen() {
       return;
     }
 
-    const parsedDate = new Date(expenseDate);
+    const expenseDateIso = toBusinessDateIso(expenseDate);
 
-    if (Number.isNaN(parsedDate.getTime())) {
-      Alert.alert("Error", "Expense date must use YYYY-MM-DD format.");
+    if (!expenseDateIso) {
+      Alert.alert("Error", "Please select a valid expense date.");
       return;
     }
 
@@ -97,15 +109,14 @@ export default function EditExpenseScreen() {
         amount: parsedAmount,
         category,
         description: description.trim(),
-        expenseDate: parsedDate.toISOString(),
+        expenseDate: expenseDateIso,
       });
 
-      router.replace("/expenses" as any);
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.message ?? "Failed to update expense";
+      showSuccessMessage("Expense updated successfully.");
 
-      Alert.alert("Error", message);
+      router.replace("/expenses" as any);
+    } catch {
+      Alert.alert("Save failed", "Unable to update this expense. Please review the details and try again.");
     } finally {
       setSaving(false);
     }
@@ -116,23 +127,27 @@ export default function EditExpenseScreen() {
   }, [expenseId]);
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator />
-        <Text style={styles.loadingText}>Loading expense...</Text>
-      </View>
-    );
+    return <LoadingState title="Loading expense" message="Getting the latest expense details." />;
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Edit Expense</Text>
+    <>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.container}
+      automaticallyAdjustKeyboardInsets
+      keyboardShouldPersistTaps="handled"
+    >
+      <Text accessibilityRole="header" style={styles.title}>Expense details</Text>
       <Text style={styles.subtitle}>Update expense details below.</Text>
+
+      <View style={styles.formCard}>
 
       <Text style={styles.label}>Expense Title</Text>
       <TextInput
         style={styles.input}
         placeholder="Example: Packaging box"
+        placeholderTextColor={UI.colors.inkSubtle}
         value={title}
         onChangeText={setTitle}
       />
@@ -141,9 +156,11 @@ export default function EditExpenseScreen() {
       <TextInput
         style={styles.input}
         placeholder="Example: 25"
+        placeholderTextColor={UI.colors.inkSubtle}
         value={amount}
         onChangeText={setAmount}
-        keyboardType="numeric"
+        keyboardType="decimal-pad"
+        inputMode="decimal"
       />
 
       <Text style={styles.label}>Category</Text>
@@ -157,6 +174,8 @@ export default function EditExpenseScreen() {
               category === item && styles.activeCategoryChip,
             ]}
             onPress={() => setCategory(item)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: category === item }}
           >
             <Text
               style={[
@@ -174,129 +193,104 @@ export default function EditExpenseScreen() {
       <TextInput
         style={[styles.input, styles.textArea]}
         placeholder="Optional description"
+        placeholderTextColor={UI.colors.inkSubtle}
         value={description}
         onChangeText={setDescription}
         multiline
       />
 
       <Text style={styles.label}>Expense Date</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="YYYY-MM-DD"
-        value={expenseDate}
-        onChangeText={setExpenseDate}
-      />
-
       <Pressable
-        style={[styles.saveButton, saving && styles.disabledButton]}
+        style={styles.dateButton}
+        onPress={() => setDatePickerVisible(true)}
+        accessibilityRole="button"
+        accessibilityLabel={`Expense date, ${formatBusinessDateLabel(expenseDate)}`}
+        accessibilityHint="Opens a calendar"
+      >
+        <Text style={[styles.dateButtonText, !expenseDate && styles.datePlaceholder]}>
+          {formatBusinessDateLabel(expenseDate)}
+        </Text>
+        <Text style={styles.calendarIcon} accessibilityElementsHidden>▦</Text>
+      </Pressable>
+
+      <View style={styles.actionStack}>
+      <AppButton
+        label="Save Changes"
+        loadingLabel="Saving..."
         onPress={handleUpdateExpense}
         disabled={saving}
-      >
-        <Text style={styles.saveButtonText}>
-          {saving ? "Saving..." : "Save Changes"}
-        </Text>
-      </Pressable>
-
-      <Pressable style={styles.cancelButton} onPress={() => router.back()}>
-        <Text style={styles.cancelButtonText}>Cancel</Text>
-      </Pressable>
+        loading={saving}
+      />
+      <AppButton label="Cancel" variant="secondary" onPress={() => router.back()} />
+      </View>
+      </View>
     </ScrollView>
+    <DatePickerModal
+      visible={datePickerVisible}
+      value={expenseDate}
+      onCancel={() => setDatePickerVisible(false)}
+      onConfirm={(value) => {
+        setExpenseDate(value);
+        setDatePickerVisible(false);
+      }}
+    />
+    </>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: { ...sharedStyles.screen },
   container: {
-    padding: 20,
-    backgroundColor: "#f6f6f6",
+    ...sharedStyles.formContent,
     flexGrow: 1,
   },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadingText: {
-    marginTop: 10,
-    color: "#666",
-  },
+  formCard: { ...sharedStyles.card },
   title: {
-    fontSize: 26,
-    fontWeight: "900",
-    marginBottom: 4,
+    ...sharedStyles.pageTitle,
   },
   subtitle: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 20,
+    ...sharedStyles.pageSubtitle,
   },
   label: {
-    fontSize: 13,
-    fontWeight: "800",
-    marginBottom: 6,
-    color: "#333",
+    ...sharedStyles.label,
   },
   input: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 14,
+    ...sharedStyles.input,
+    ...sharedStyles.inputWeb,
     marginBottom: 14,
   },
+  dateButton: {
+    ...sharedStyles.input,
+    minHeight: UI.control.inputHeight,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  dateButtonText: { flex: 1, color: UI.colors.ink, fontSize: 14 },
+  datePlaceholder: { color: UI.colors.inkSubtle },
+  calendarIcon: { color: UI.colors.inkMuted, fontSize: 20, marginLeft: 12 },
   textArea: {
     minHeight: 90,
     textAlignVertical: "top",
   },
   categoryList: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: UI.spacing.xs,
     marginBottom: 14,
   },
   categoryChip: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    marginBottom: 10,
+    ...sharedStyles.chip,
   },
   activeCategoryChip: {
-    backgroundColor: "#111",
-    borderColor: "#111",
+    ...sharedStyles.chipSelected,
   },
   categoryChipText: {
-    color: "#333",
-    fontSize: 13,
-    fontWeight: "700",
+    ...sharedStyles.chipText,
   },
   activeCategoryChipText: {
-    color: "#fff",
+    ...sharedStyles.chipTextSelected,
   },
-  saveButton: {
-    backgroundColor: "#111",
-    borderRadius: 10,
-    padding: 14,
-    alignItems: "center",
-    marginTop: 14,
-  },
-  disabledButton: {
-    opacity: 0.6,
-  },
-  saveButtonText: {
-    color: "#fff",
-    fontWeight: "900",
-    fontSize: 15,
-  },
-  cancelButton: {
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: "#ddd",
-  },
-  cancelButtonText: {
-    fontSize: 15,
-    fontWeight: "800",
-  },
+  actionStack: { gap: UI.spacing.sm, marginTop: UI.spacing.xl },
 });

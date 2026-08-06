@@ -18,11 +18,8 @@ type CreateOrderInput = {
   tiktokOrderId?: string;
   platform?: "MANUAL" | "TIKTOK_SHOP" | "SHOPEE" | "LAZADA";
   status?:
-    | "PENDING"
-    | "PAID"
-    | "PACKING"
-    | "SHIPPED"
-    | "DELIVERED"
+    | "NEEDS_ITEMS"
+    | "COMPLETED"
     | "CANCELLED"
     | "REFUNDED";
   customerName?: string;
@@ -300,10 +297,9 @@ export const createOrder = async (data: CreateOrderInput) => {
         orderNumber: data.orderNumber,
         tiktokOrderId: data.tiktokOrderId,
         source: "MANUAL",
-        importStatus: "READY",
         stockProcessed: true,
         platform: data.platform ?? "MANUAL",
-        status: data.status ?? "PENDING",
+        status: data.status ?? "COMPLETED",
         customerName: data.customerName,
 
         subtotal,
@@ -359,7 +355,7 @@ export const completeImportedOrder = async (
         id: true,
         orderNumber: true,
         source: true,
-        importStatus: true,
+        status: true,
         stockProcessed: true,
         shippingFee: true,
       },
@@ -373,7 +369,7 @@ export const completeImportedOrder = async (
       throw new AppError("Order is not an incomplete TikTok import", 409);
     }
 
-    if (order.importStatus === "READY") {
+    if (order.status === "COMPLETED") {
       throw new AppError("Imported order has already been completed", 409);
     }
 
@@ -381,7 +377,7 @@ export const completeImportedOrder = async (
       throw new AppError("Order stock has already been processed", 409);
     }
 
-    if (order.importStatus !== "NEEDS_ITEMS") {
+    if (order.status !== "NEEDS_ITEMS") {
       throw new AppError("Order is not an incomplete TikTok import", 409);
     }
 
@@ -391,7 +387,7 @@ export const completeImportedOrder = async (
       where: {
         id,
         source: "TIKTOK",
-        importStatus: "NEEDS_ITEMS",
+        status: "NEEDS_ITEMS",
         stockProcessed: false,
       },
       data: {
@@ -468,7 +464,7 @@ export const completeImportedOrder = async (
         total,
         totalCost,
         profit,
-        importStatus: "READY",
+        status: "COMPLETED",
         stockProcessed: true,
       },
       include: {
@@ -487,11 +483,8 @@ export const completeImportedOrder = async (
 type OrderFilter = {
   search?: string;
   status?:
-    | "PENDING"
-    | "PAID"
-    | "PACKING"
-    | "SHIPPED"
-    | "DELIVERED"
+    | "NEEDS_ITEMS"
+    | "COMPLETED"
     | "CANCELLED"
     | "REFUNDED";
   platform?: "MANUAL" | "TIKTOK_SHOP" | "SHOPEE" | "LAZADA";
@@ -593,11 +586,8 @@ export const getOrderById = async (id: string) => {
 export const updateOrderStatus = async (
   id: string,
   status:
-    | "PENDING"
-    | "PAID"
-    | "PACKING"
-    | "SHIPPED"
-    | "DELIVERED"
+    | "NEEDS_ITEMS"
+    | "COMPLETED"
     | "CANCELLED"
     | "REFUNDED"
 ) => {

@@ -56,7 +56,7 @@ test("a new TikTok order creates one incomplete order without items or stock wor
 
   assert.equal(result, "created");
   assert.equal(createdOrders.length, 1);
-  assert.equal(createdOrders[0].importStatus, "NEEDS_ITEMS");
+  assert.equal(createdOrders[0].status, "NEEDS_ITEMS");
   assert.equal(createdOrders[0].stockProcessed, false);
   assert.equal(createdOrders[0].source, "TIKTOK");
   assert.equal(createdOrders[0].platform, "TIKTOK_SHOP");
@@ -68,7 +68,7 @@ test("a new TikTok order creates one incomplete order without items or stock wor
 test("an existing manually edited TikTok order is not changed", async () => {
   const existingOrder = {
     id: "local-order-1",
-    importStatus: "READY",
+    status: "COMPLETED",
     stockProcessed: true,
     customerName: "Manually corrected name",
     itemIds: ["item-1", "item-2"],
@@ -95,7 +95,7 @@ test("an existing manually edited TikTok order is not changed", async () => {
 
   assert.equal(result, "existing");
   assert.equal(createCalls, 0);
-  assert.equal(existingOrder.importStatus, "READY");
+  assert.equal(existingOrder.status, "COMPLETED");
   assert.equal(existingOrder.stockProcessed, true);
   assert.equal(existingOrder.customerName, "Manually corrected name");
   assert.deepEqual(existingOrder.itemIds, ["item-1", "item-2"]);

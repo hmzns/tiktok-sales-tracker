@@ -4,20 +4,22 @@ import { UI } from "../constants/ui";
 type LoadingStateProps = {
   title?: string;
   message?: string;
+  compact?: boolean;
 };
 
 export function LoadingState({
   title = "Loading...",
   message = "Please wait while we get your data.",
+  compact = false,
 }: LoadingStateProps) {
   return (
-    <View style={styles.container}>
-      <View style={styles.card}>
+    <View style={[styles.container, compact && styles.compactContainer]}>
+      <View style={[styles.card, compact && styles.compactCard]}>
         <View style={styles.indicatorWrap}>
           <ActivityIndicator size="small" color={UI.colors.primary} />
         </View>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.message}>{message}</Text>
+        <Text accessibilityRole="header" style={styles.title}>{title}</Text>
+        <Text style={styles.message}>{message}</Text>
       </View>
     </View>
   );
@@ -41,6 +43,17 @@ const styles = StyleSheet.create({
     borderColor: UI.colors.border,
     padding: 32,
     ...UI.shadow,
+  },
+  compactContainer: {
+    flex: 0,
+    backgroundColor: "transparent",
+    padding: 0,
+  },
+  compactCard: {
+    maxWidth: "100%",
+    padding: 20,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   indicatorWrap: {
     width: 48,

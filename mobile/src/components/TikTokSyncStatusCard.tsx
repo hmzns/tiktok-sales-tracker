@@ -13,6 +13,7 @@ import type {
 } from "../api/orders";
 import { UI } from "../constants/ui";
 import { formatLocalDateTime } from "../utils/formatLocalDateTime";
+import { StatusBadge as StatusBadgeBase } from "./ui/StatusBadge";
 
 type TikTokSyncStatusCardProps = {
   data: TikTokSyncHistory | null;
@@ -57,14 +58,10 @@ const formatDuration = (durationMs: number | null) => {
 
 function StatusBadge({ status }: { status: TikTokSyncRun["status"] }) {
   return (
-    <Text
-      style={[
-        styles.statusBadge,
-        status === "SUCCESS" ? styles.successBadge : styles.failedBadge,
-      ]}
-    >
-      {getStatusLabel(status)}
-    </Text>
+    <StatusBadgeBase
+      label={getStatusLabel(status)}
+      tone={status === "SUCCESS" ? "success" : "danger"}
+    />
   );
 }
 
@@ -125,7 +122,7 @@ export function TikTokSyncStatusCard({
   return (
     <View style={styles.card}>
       <View style={styles.header}>
-        <Text style={styles.title}>TikTok Sync Status</Text>
+        <Text style={styles.title}>Sync Status</Text>
       </View>
 
       {loading && !data ? (
@@ -144,6 +141,7 @@ export function TikTokSyncStatusCard({
             onPress={onRetry}
             style={styles.retryButton}
             accessibilityRole="button"
+            accessibilityLabel="Retry loading TikTok sync status"
           >
             <Text style={styles.retryButtonText}>Retry</Text>
           </Pressable>
@@ -283,7 +281,7 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   retryButton: {
-    minHeight: 34,
+    minHeight: UI.control.minTouchTarget,
     justifyContent: "center",
     paddingHorizontal: 12,
     borderRadius: UI.radius.small,
@@ -367,7 +365,7 @@ const styles = StyleSheet.create({
     color: UI.colors.danger,
   },
   historyToggle: {
-    minHeight: 42,
+    minHeight: UI.control.minTouchTarget,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",

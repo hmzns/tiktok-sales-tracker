@@ -23,8 +23,11 @@ import {
 import { getProducts, Product } from "../api/products";
 import { ErrorState } from "../components/ErrorState";
 import { FieldError } from "../components/FieldError";
+import { FloatingBackToTop } from "../components/FloatingBackToTop";
 import { LoadingState } from "../components/LoadingState";
 import { UI } from "../constants/ui";
+import { sharedStyles } from "../constants/sharedStyles";
+import { StatusBadge, StatusTone } from "../components/ui/StatusBadge";
 import { showSuccessMessage } from "../utils/showSuccessMessage";
 import {
   buildCompletionConfirmationMessage,
@@ -110,7 +113,7 @@ const isCompletedImportedOrder = (
   Boolean(
     value &&
       value.source === "TIKTOK" &&
-      value.importStatus === "READY" &&
+      value.status === "COMPLETED" &&
       value.stockProcessed &&
       Array.isArray(value.items)
   );
@@ -124,10 +127,23 @@ const formatOrderDate = (dateString: string | null) => {
   return Number.isNaN(date.getTime()) ? "Not available" : date.toLocaleString();
 };
 
+const getOrderStatusTone = (status: OrderStatus): StatusTone => {
+  if (status === "COMPLETED") return "success";
+  if (status === "CANCELLED" || status === "REFUNDED") return "danger";
+  return "warning";
+};
+
+const formatStatusLabel = (status: string) =>
+  status
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
 export default function OrderDetailScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const isSmallScreen = width < 600;
+  const useWebProductRows = Platform.OS === "web" && !isSmallScreen;
 
   const [order, setOrder] = useState<SalesOrder | null>(null);
   const [loading, setLoading] = useState(true);
@@ -148,6 +164,11 @@ export default function OrderDetailScreen() {
   });
   const [completionError, setCompletionError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const [completionActionObscuresFloating, setCompletionActionObscuresFloating] =
+    useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const completionActionRef = useRef<View>(null);
   const submittingRef = useRef(false);
   const confirmationOpenRef = useRef(false);
   const productsLoadedRef = useRef(false);
@@ -167,7 +188,7 @@ export default function OrderDetailScreen() {
 
       if (
         result.source === "TIKTOK" &&
-        result.importStatus === "NEEDS_ITEMS" &&
+        result.status === "NEEDS_ITEMS" &&
         !result.stockProcessed
       ) {
         void loadProducts();
@@ -222,11 +243,8 @@ export default function OrderDetailScreen() {
 
       await updateOrderStatus(orderId, status);
       await loadOrder();
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.message ?? "Failed to update order status";
-
-      Alert.alert("Error", message);
+    } catch {
+      Alert.alert("Update failed", "Unable to update this order. Please try again.");
     } finally {
       setUpdating(false);
     }
@@ -279,7 +297,7 @@ export default function OrderDetailScreen() {
 
   const canCompleteImportedOrder =
     order?.source === "TIKTOK" &&
-    order.importStatus === "NEEDS_ITEMS" &&
+    order.status === "NEEDS_ITEMS" &&
     !order.stockProcessed;
 
   const activeProducts = useMemo(
@@ -288,15 +306,22 @@ export default function OrderDetailScreen() {
   );
   const normalizedProductSearch = productSearch.trim().toLowerCase();
   const filteredProducts = useMemo(() => {
-    if (!normalizedProductSearch) {
-      return activeProducts;
-    }
+    const matches = normalizedProductSearch
+      ? activeProducts.filter((product) =>
+          [product.name, product.sku].some((value) =>
+            value.toLowerCase().includes(normalizedProductSearch)
+          )
+        )
+      : activeProducts;
 
-    return activeProducts.filter((product) =>
-      [product.name, product.sku].some((value) =>
-        value.toLowerCase().includes(normalizedProductSearch)
-      )
-    );
+    return matches
+      .map((product, originalIndex) => ({ product, originalIndex }))
+      .sort((a, b) => {
+        const stockDifference =
+          Number(b.product.stock > 0) - Number(a.product.stock > 0);
+        return stockDifference || a.originalIndex - b.originalIndex;
+      })
+      .map(({ product }) => product);
   }, [activeProducts, normalizedProductSearch]);
 
   const selectedProductIds = useMemo(
@@ -594,7 +619,7 @@ export default function OrderDetailScreen() {
     return (
       <ErrorState
         title="Failed to load order"
-        message="Please check your connection or backend API, then try again."
+        message="Please check your connection and try again."
         onRetry={() => void loadOrder()}
       />
     );
@@ -608,25 +633,18 @@ export default function OrderDetailScreen() {
     );
   }
 
-  const canMarkShipped =
-    order.status !== "SHIPPED" &&
-    order.status !== "DELIVERED" &&
-    order.status !== "CANCELLED" &&
-    order.status !== "REFUNDED";
-
-  const canMarkDelivered = order.status === "SHIPPED";
-
   const canCancel =
     order.status !== "CANCELLED" &&
-    order.status !== "REFUNDED" &&
-    order.status !== "DELIVERED";
+    order.status !== "REFUNDED";
 
   const canRefund =
     order.status !== "CANCELLED" &&
     order.status !== "REFUNDED";
 
   return (
+    <View style={styles.screenShell}>
     <ScrollView
+      ref={scrollRef}
       contentContainerStyle={[
         styles.container,
         isSmallScreen && styles.smallScreenContainer,
@@ -634,8 +652,28 @@ export default function OrderDetailScreen() {
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       automaticallyAdjustKeyboardInsets
+      onScroll={(event) => {
+        const offsetY = event.nativeEvent.contentOffset.y;
+        setShowBackToTop(offsetY > 320);
+
+        if (offsetY <= 320 || !canCompleteImportedOrder) {
+          setCompletionActionObscuresFloating(false);
+          return;
+        }
+
+        completionActionRef.current?.measureInWindow(
+          (_x, y, _width, actionHeight) => {
+            const floatingTop = height - 68;
+            const floatingBottom = height - 20;
+            setCompletionActionObscuresFloating(
+              y < floatingBottom && y + actionHeight > floatingTop
+            );
+          }
+        );
+      }}
+      scrollEventThrottle={16}
     >
-      <Text style={styles.title}>
+      <Text accessibilityRole="header" style={styles.title}>
         {order.orderNumber || order.id}
       </Text>
 
@@ -644,113 +682,45 @@ export default function OrderDetailScreen() {
       </Text>
 
       {completionError ? (
-        <View style={styles.formError}>
+        <View accessibilityRole="alert" style={styles.formError}>
           <Text style={styles.formErrorText}>{completionError}</Text>
         </View>
       ) : null}
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Order Information</Text>
-
-        <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
-          <Text style={styles.infoLabel}>Order Identifier</Text>
-          <Text
-            selectable
-            style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}
-          >
-            {order.orderNumber || order.id}
-          </Text>
-        </View>
-
-        {order.source === "TIKTOK" ? (
-          <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
-            <Text style={styles.infoLabel}>TikTok Order ID</Text>
-            <Text
-              selectable
-              style={[
-                styles.infoValue,
-                styles.longIdentifier,
-                isSmallScreen && styles.smallInfoValue,
-              ]}
-            >
-              {order.tiktokOrderId || "-"}
-            </Text>
+        <View style={[styles.metadataGrid, isSmallScreen && styles.smallMetadataGrid]}>
+          <View style={[styles.metadataItem, isSmallScreen && styles.smallMetadataItem]}>
+            <Text style={styles.infoLabel}>Order Identifier</Text>
+            <Text selectable style={styles.metadataValue}>{order.orderNumber || order.id}</Text>
           </View>
-        ) : null}
 
-        <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
-          <Text style={styles.infoLabel}>Order Source</Text>
-          <Text
-            style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}
-          >
-            {order.source === "TIKTOK" ? "TikTok" : "Manual"}
-          </Text>
-        </View>
+          {order.source === "TIKTOK" ? (
+            <View style={[styles.metadataItem, isSmallScreen && styles.smallMetadataItem]}>
+              <Text style={styles.infoLabel}>TikTok Order ID</Text>
+              <Text selectable style={styles.metadataValue}>{order.tiktokOrderId || "-"}</Text>
+            </View>
+          ) : null}
 
-        {order.source === "TIKTOK" ? (
-          <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
-            <Text style={styles.infoLabel}>Import Status</Text>
-            <Text
-              style={[
-                styles.importBadge,
-                order.importStatus === "READY" && order.stockProcessed
-                  ? styles.readyBadge
-                  : order.importStatus === "NEEDS_ITEMS"
-                    ? styles.needsItemsBadge
-                    : styles.failedBadge,
-              ]}
-            >
-              {order.importStatus === "READY" && order.stockProcessed
-                ? "Ready"
-                : order.importStatus === "NEEDS_ITEMS"
-                  ? "Needs Items"
-                  : "Import Failed"}
-            </Text>
+          <View style={[styles.metadataItem, isSmallScreen && styles.smallMetadataItem]}>
+            <Text style={styles.infoLabel}>Order Status</Text>
+            <StatusBadge label={formatStatusLabel(order.status)} tone={getOrderStatusTone(order.status)} />
           </View>
-        ) : null}
 
-        <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
-          <Text style={styles.infoLabel}>Order Status</Text>
-          <Text
-            style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}
-          >
-            {order.status}
-          </Text>
-        </View>
+          <View style={[styles.metadataItem, isSmallScreen && styles.smallMetadataItem]}>
+            <Text style={styles.infoLabel}>{order.source === "TIKTOK" && order.importedAt ? "Imported" : "Created"}</Text>
+            <Text style={styles.metadataValue}>{formatOrderDate(order.source === "TIKTOK" && order.importedAt ? order.importedAt : order.createdAt)}</Text>
+          </View>
 
-        <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
-          <Text style={styles.infoLabel}>
-            {order.source === "TIKTOK" && order.importedAt
-              ? "Imported"
-              : "Created"}
-          </Text>
-          <Text
-            style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}
-          >
-            {formatOrderDate(
-              order.source === "TIKTOK" && order.importedAt
-                ? order.importedAt
-                : order.createdAt
-            )}
-          </Text>
-        </View>
+          <View style={[styles.metadataItem, isSmallScreen && styles.smallMetadataItem]}>
+            <Text style={styles.infoLabel}>Customer</Text>
+            <Text style={styles.metadataValue}>{order.customerName || "No customer name"}</Text>
+          </View>
 
-        <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
-          <Text style={styles.infoLabel}>Customer</Text>
-          <Text
-            style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}
-          >
-            {order.customerName || "No customer name"}
-          </Text>
-        </View>
-
-        <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
-          <Text style={styles.infoLabel}>Platform</Text>
-          <Text
-            style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}
-          >
-            {order.platform}
-          </Text>
+          <View style={[styles.metadataItem, isSmallScreen && styles.smallMetadataItem]}>
+            <Text style={styles.infoLabel}>Platform</Text>
+            <Text style={styles.metadataValue}>{order.platform}</Text>
+          </View>
         </View>
       </View>
 
@@ -765,6 +735,7 @@ export default function OrderDetailScreen() {
           <TextInput
             style={styles.searchInput}
             placeholder="Search by product name or SKU"
+            placeholderTextColor={UI.colors.inkSubtle}
             value={productSearch}
             onChangeText={(value) => {
               setProductSearch(value);
@@ -813,6 +784,8 @@ export default function OrderDetailScreen() {
                     key={product.id}
                     style={[
                       styles.productOption,
+                      isSmallScreen && styles.compactProductOption,
+                      useWebProductRows && styles.webProductOption,
                       isDisabled && styles.disabledProductOption,
                     ]}
                     onPress={() => handleAddProduct(product)}
@@ -828,15 +801,41 @@ export default function OrderDetailScreen() {
                     accessibilityState={{ disabled: isDisabled }}
                   >
                     <View style={styles.productResultContent}>
-                      <Text style={styles.productName}>{product.name}</Text>
-                      <Text style={styles.productMeta}>SKU: {product.sku}</Text>
-                      <Text style={styles.productMeta}>
-                        Available stock: {product.stock}
+                      <Text
+                        style={[
+                          styles.productName,
+                          isSmallScreen && styles.compactProductName,
+                        ]}
+                      >
+                        {product.name}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.productMeta,
+                          isSmallScreen && styles.compactProductMeta,
+                        ]}
+                      >
+                        SKU: {product.sku}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.productFacts,
+                        isSmallScreen && styles.compactProductFacts,
+                        useWebProductRows && styles.webProductFacts,
+                      ]}
+                    >
+                      <Text style={[styles.productMeta, isSmallScreen && styles.compactProductMeta]}>
+                        Stock: {product.stock}
+                      </Text>
+                      <Text style={[styles.productMeta, isSmallScreen && styles.compactProductMeta]}>
+                        RM {product.sellPrice.toFixed(2)}
                       </Text>
                     </View>
                     <Text
                       style={[
                         styles.productActionText,
+                        !useWebProductRows && styles.stackedProductActionText,
                         isDisabled && styles.disabledProductActionText,
                       ]}
                     >
@@ -991,6 +990,7 @@ export default function OrderDetailScreen() {
                   placeholder={
                     discountType === "FIXED" ? "Example: 10.00" : "Example: 10"
                   }
+                  placeholderTextColor={UI.colors.inkSubtle}
                   keyboardType="decimal-pad"
                   accessibilityLabel={
                     discountType === "FIXED"
@@ -1032,7 +1032,10 @@ export default function OrderDetailScreen() {
             </View>
           </View>
 
-          <View style={styles.completionActionArea}>
+          <View
+            ref={completionActionRef}
+            style={styles.completionActionArea}
+          >
             <Pressable
               style={[
                 styles.completeButton,
@@ -1170,31 +1173,13 @@ export default function OrderDetailScreen() {
         <Text style={styles.sectionTitle}>Order Actions</Text>
 
         <View style={styles.actionRow}>
-          {canMarkShipped ? (
-            <Pressable
-              style={[styles.actionButton, updating && styles.disabledButton]}
-              onPress={() => handleStatusUpdate("SHIPPED")}
-              disabled={updating}
-            >
-              <Text style={styles.actionButtonText}>Mark Shipped</Text>
-            </Pressable>
-          ) : null}
-
-          {canMarkDelivered ? (
-            <Pressable
-              style={[styles.actionButton, updating && styles.disabledButton]}
-              onPress={() => handleStatusUpdate("DELIVERED")}
-              disabled={updating}
-            >
-              <Text style={styles.actionButtonText}>Mark Delivered</Text>
-            </Pressable>
-          ) : null}
-
           {canCancel ? (
             <Pressable
               style={[styles.dangerButton, updating && styles.disabledButton]}
               onPress={() => handleStatusUpdate("CANCELLED")}
               disabled={updating}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: updating, busy: updating }}
             >
               <Text style={styles.dangerButtonText}>Cancel Order</Text>
             </Pressable>
@@ -1205,6 +1190,8 @@ export default function OrderDetailScreen() {
               style={[styles.warningButton, updating && styles.disabledButton]}
               onPress={() => handleStatusUpdate("REFUNDED")}
               disabled={updating}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: updating, busy: updating }}
             >
               <Text style={styles.warningButtonText}>Refund Order</Text>
             </Pressable>
@@ -1212,19 +1199,28 @@ export default function OrderDetailScreen() {
         </View>
       </View>
     </ScrollView>
+    <FloatingBackToTop
+      visible={showBackToTop && !completionActionObscuresFloating}
+      onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+    />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screenShell: { flex: 1, backgroundColor: UI.colors.canvas },
   container: {
-    padding: 20,
-    paddingBottom: 32,
-    backgroundColor: "#f6f6f6",
+    width: "100%",
+    maxWidth: UI.layout.formMaxWidth,
+    alignSelf: "center",
+    padding: UI.layout.screenPadding,
+    paddingBottom: 104,
+    backgroundColor: UI.colors.canvas,
     flexGrow: 1,
   },
   smallScreenContainer: {
-    padding: 12,
-    paddingBottom: 28,
+    padding: UI.layout.screenPaddingNarrow,
+    paddingBottom: 104,
   },
   center: {
     flex: 1,
@@ -1233,29 +1229,23 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 10,
-    color: "#666",
+    color: UI.colors.inkMuted,
   },
   title: {
-    fontSize: 26,
-    fontWeight: "900",
-    marginBottom: 4,
+    ...sharedStyles.pageTitle,
     flexShrink: 1,
   },
   subtitle: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 20,
+    ...sharedStyles.pageSubtitle,
   },
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 16,
+    ...sharedStyles.card,
     marginBottom: 14,
   },
   formError: {
     backgroundColor: UI.colors.dangerSoft,
     borderWidth: 1,
-    borderColor: "#FECDCA",
+    borderColor: UI.colors.danger,
     borderRadius: 10,
     padding: 12,
     marginBottom: 14,
@@ -1267,17 +1257,39 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: "900",
-    marginBottom: 12,
+    ...sharedStyles.sectionTitle,
   },
   sectionDescription: {
-    color: "#666",
+    color: UI.colors.inkMuted,
     fontSize: 13,
     lineHeight: 19,
     marginTop: -6,
     marginBottom: 14,
   },
+  metadataGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  smallMetadataGrid: { gap: 6 },
+  metadataItem: {
+    flexGrow: 1,
+    flexBasis: "47%",
+    minWidth: 240,
+    minHeight: 60,
+    justifyContent: "flex-start",
+    gap: 3,
+    padding: 10,
+    borderRadius: UI.radius.small,
+    backgroundColor: UI.colors.surfaceMuted,
+  },
+  smallMetadataItem: {
+    flexBasis: "47%",
+    minWidth: 0,
+    minHeight: 56,
+    padding: 8,
+  },
+  metadataValue: { color: UI.colors.ink, fontSize: 13, fontWeight: "800", flexShrink: 1 },
   infoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1291,12 +1303,12 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   infoLabel: {
-    color: "#666",
+    color: UI.colors.inkMuted,
     fontSize: 13,
     fontWeight: "700",
   },
   infoValue: {
-    color: "#111",
+    color: UI.colors.ink,
     fontSize: 13,
     fontWeight: "800",
     textAlign: "right",
@@ -1312,11 +1324,11 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   importBadge: {
-    fontSize: 12,
+    fontSize: UI.type.caption,
     fontWeight: "800",
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
+    paddingVertical: 5,
+    borderRadius: UI.radius.pill,
     overflow: "hidden",
     alignSelf: "flex-start",
   },
@@ -1359,34 +1371,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   retryButtonText: {
-    color: "#fff",
+    color: UI.colors.onDark,
     fontSize: 12,
     fontWeight: "800",
   },
   emptyText: {
-    backgroundColor: "#f6f6f6",
-    borderRadius: 10,
+    backgroundColor: UI.colors.surfaceMuted,
+    borderRadius: UI.radius.small,
     padding: 14,
-    color: "#666",
+    color: UI.colors.inkMuted,
     textAlign: "center",
     marginBottom: 14,
   },
   productList: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
     marginBottom: 14,
   },
   productOption: {
-    backgroundColor: "#f6f6f6",
+    width: "48%",
+    backgroundColor: UI.colors.surfaceMuted,
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
+    borderColor: UI.colors.borderStrong,
+    borderRadius: UI.radius.small,
     padding: 12,
-    marginBottom: 10,
     minHeight: 64,
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: "column",
+    alignItems: "stretch",
     justifyContent: "space-between",
     gap: 12,
   },
+  compactProductOption: { minHeight: 0, padding: 7, gap: 4 },
+  webProductOption: { flexDirection: "row", alignItems: "center" },
   disabledProductOption: {
     backgroundColor: UI.colors.surfaceMuted,
     borderColor: UI.colors.border,
@@ -1399,40 +1416,38 @@ const styles = StyleSheet.create({
   productName: {
     fontSize: 14,
     fontWeight: "900",
-    color: "#111",
+    color: UI.colors.ink,
     marginBottom: 4,
   },
+  compactProductName: { marginBottom: 0 },
   productMeta: {
     fontSize: 12,
-    color: "#666",
+    color: UI.colors.inkMuted,
     lineHeight: 18,
   },
+  compactProductMeta: { lineHeight: 15 },
+  productFacts: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  compactProductFacts: { gap: 6 },
+  webProductFacts: { minWidth: 92, flexDirection: "column", gap: 3 },
   productActionText: {
     color: UI.colors.primary,
     fontSize: 13,
     fontWeight: "900",
   },
+  stackedProductActionText: { alignSelf: "flex-start" },
   disabledProductActionText: {
     color: UI.colors.inkMuted,
   },
   label: {
-    fontSize: 13,
-    fontWeight: "800",
-    marginBottom: 6,
-    color: "#333",
+    ...sharedStyles.label,
   },
   searchInput: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 14,
-    minHeight: 44,
+    ...sharedStyles.input,
+    ...sharedStyles.inputWeb,
   },
   selectedItemsSection: {
     borderTopWidth: 1,
-    borderTopColor: "#eee",
+    borderTopColor: UI.colors.border,
     marginTop: 18,
     paddingTop: 16,
   },
@@ -1449,7 +1464,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   discountOption: {
-    minHeight: 40,
+    minHeight: UI.control.minTouchTarget,
     justifyContent: "center",
     paddingHorizontal: 12,
     borderRadius: UI.radius.pill,
@@ -1473,8 +1488,8 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   selectedItemCard: {
-    backgroundColor: "#f6f6f6",
-    borderRadius: 10,
+    backgroundColor: UI.colors.surfaceMuted,
+    borderRadius: UI.radius.small,
     padding: 12,
     marginBottom: 10,
   },
@@ -1489,12 +1504,12 @@ const styles = StyleSheet.create({
   },
   selectedItemMeta: {
     fontSize: 12,
-    color: "#666",
+    color: UI.colors.inkMuted,
     marginBottom: 4,
   },
   removeButton: {
-    backgroundColor: "#ffecec",
-    borderRadius: 8,
+    backgroundColor: UI.colors.dangerSoft,
+    borderRadius: UI.radius.xsmall,
     minHeight: 44,
     justifyContent: "center",
     paddingVertical: 8,
@@ -1502,7 +1517,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   removeButtonText: {
-    color: "#cc3333",
+    color: UI.colors.danger,
     fontWeight: "800",
     fontSize: 12,
   },
@@ -1514,7 +1529,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   quantityLabel: {
-    color: "#333",
+    color: UI.colors.ink,
     fontSize: 13,
     fontWeight: "800",
   },
@@ -1595,15 +1610,15 @@ const styles = StyleSheet.create({
     paddingTop: 14,
   },
   completeButton: {
-    backgroundColor: "#111",
-    borderRadius: 10,
+    backgroundColor: UI.colors.primary,
+    borderRadius: UI.radius.small,
     minHeight: 48,
     padding: 12,
     alignItems: "center",
     justifyContent: "center",
   },
   completeButtonText: {
-    color: "#fff",
+    color: UI.colors.onDark,
     fontWeight: "900",
     fontSize: 15,
   },
@@ -1613,8 +1628,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   itemCard: {
-    backgroundColor: "#f7f7f7",
-    borderRadius: 10,
+    backgroundColor: UI.colors.surfaceMuted,
+    borderRadius: UI.radius.small,
     padding: 12,
     marginBottom: 10,
   },
@@ -1625,7 +1640,7 @@ const styles = StyleSheet.create({
   },
   itemSku: {
     fontSize: 12,
-    color: "#666",
+    color: UI.colors.inkMuted,
     marginBottom: 10,
   },
   totalRow: {
@@ -1635,20 +1650,20 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: "#eee",
+    borderTopColor: UI.colors.border,
   },
   totalLabel: {
-    color: "#111",
+    color: UI.colors.ink,
     fontSize: 15,
     fontWeight: "900",
   },
   totalValue: {
-    color: "#111",
+    color: UI.colors.ink,
     fontSize: 15,
     fontWeight: "900",
   },
   profitValue: {
-    color: "#1f8f46",
+    color: UI.colors.success,
     fontSize: 15,
     fontWeight: "900",
   },
@@ -1656,39 +1671,39 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   actionButton: {
-    backgroundColor: "#111",
-    borderRadius: 10,
+    backgroundColor: UI.colors.ink,
+    borderRadius: UI.radius.small,
     minHeight: 44,
     padding: 12,
     alignItems: "center",
     justifyContent: "center",
   },
   actionButtonText: {
-    color: "#fff",
+    color: UI.colors.onDark,
     fontWeight: "900",
   },
   dangerButton: {
-    backgroundColor: "#ffecec",
-    borderRadius: 10,
+    backgroundColor: UI.colors.dangerSoft,
+    borderRadius: UI.radius.small,
     minHeight: 44,
     padding: 12,
     alignItems: "center",
     justifyContent: "center",
   },
   dangerButtonText: {
-    color: "#cc3333",
+    color: UI.colors.danger,
     fontWeight: "900",
   },
   warningButton: {
-    backgroundColor: "#fff4d6",
-    borderRadius: 10,
+    backgroundColor: UI.colors.warningSoft,
+    borderRadius: UI.radius.small,
     minHeight: 44,
     padding: 12,
     alignItems: "center",
     justifyContent: "center",
   },
   warningButtonText: {
-    color: "#8a5a00",
+    color: UI.colors.warning,
     fontWeight: "900",
   },
   disabledButton: {

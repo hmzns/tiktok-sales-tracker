@@ -11,6 +11,7 @@ import { AppError } from "../src/utils/AppError";
 import {
   completeImportedOrderSchema,
   createOrderSchema,
+  updateOrderStatusSchema,
 } from "../src/validators/order.validator";
 
 type TestProduct = {
@@ -26,7 +27,7 @@ type TestOrder = {
   id: string;
   orderNumber: string | null;
   source: "MANUAL" | "TIKTOK";
-  importStatus: "NEEDS_ITEMS" | "READY" | "IMPORT_FAILED";
+  status: "NEEDS_ITEMS" | "COMPLETED" | "CANCELLED" | "REFUNDED";
   stockProcessed: boolean;
   discountType: "NONE" | "FIXED" | "PERCENTAGE";
   discountValue: number;
@@ -72,7 +73,7 @@ const makeOrder = (overrides: Partial<TestOrder> = {}): TestOrder => ({
   id: "order-1",
   orderNumber: "TT-1001",
   source: "TIKTOK",
-  importStatus: "NEEDS_ITEMS",
+  status: "NEEDS_ITEMS",
   stockProcessed: false,
   discountType: "NONE",
   discountValue: 0,
@@ -124,7 +125,7 @@ const createHarness = (
           where: {
             id: string;
             source: string;
-            importStatus: string;
+            status: string;
             stockProcessed: boolean;
           };
           data: Partial<TestOrder>;
@@ -132,7 +133,7 @@ const createHarness = (
           const matches =
             working.order.id === where.id &&
             working.order.source === where.source &&
-            working.order.importStatus === where.importStatus &&
+            working.order.status === where.status &&
             working.order.stockProcessed === where.stockProcessed;
 
           if (matches) {
@@ -280,6 +281,17 @@ test("manual-order validation accepts typed discounts and normalizes legacy fixe
     value: 10,
   });
   assert.deepEqual(legacyFixed.discount, { type: "FIXED", value: 5 });
+  assert.equal(percentage.status, "COMPLETED");
+});
+
+test("order status validation exposes only the consolidated lifecycle", () => {
+  for (const status of ["NEEDS_ITEMS", "COMPLETED", "REFUNDED", "CANCELLED"]) {
+    assert.equal(updateOrderStatusSchema.safeParse({ status }).success, true);
+  }
+
+  for (const status of ["PENDING", "PAID", "PACKING", "SHIPPED", "DELIVERED"]) {
+    assert.equal(updateOrderStatusSchema.safeParse({ status }).success, false);
+  }
 });
 
 test("missing orders return a clear not-found error", async () => {
@@ -339,7 +351,7 @@ test("completes a TikTok import with one item, totals, stock, and movement", asy
   assert.equal(state.order.total, 22);
   assert.equal(state.order.totalCost, 8);
   assert.equal(state.order.profit, 14);
-  assert.equal(state.order.importStatus, "READY");
+  assert.equal(state.order.status, "COMPLETED");
   assert.equal(state.order.stockProcessed, true);
   assert.equal("rawImportData" in (result as object), false);
   assert.equal((result as { items: unknown[] }).items.length, 1);
@@ -596,7 +608,7 @@ test("manual orders cannot use the import-completion service", async () => {
   const harness = createHarness({
     order: makeOrder({
       source: "MANUAL",
-      importStatus: "READY",
+      status: "COMPLETED",
       stockProcessed: true,
     }),
     products: [makeProduct("product-1")],
@@ -651,9 +663,8 @@ test("completed imported order cancellation restores its deducted stock", async 
     id: "order-1",
     orderNumber: "TT-1001",
     source: "TIKTOK",
-    importStatus: "READY",
     stockProcessed: true,
-    status: "PAID",
+    status: "COMPLETED",
     items: [{ productId: "product-1", quantity: 2 }],
   };
 
@@ -709,9 +720,8 @@ test("incomplete imported order cancellation does not restore stock", async () =
     id: "order-1",
     orderNumber: "TT-1001",
     source: "TIKTOK",
-    importStatus: "NEEDS_ITEMS",
     stockProcessed: false,
-    status: "PENDING",
+    status: "NEEDS_ITEMS",
     items: [{ productId: "product-1", quantity: 2 }],
   };
 

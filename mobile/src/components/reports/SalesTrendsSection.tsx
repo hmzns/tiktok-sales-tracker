@@ -127,6 +127,7 @@ export function SalesTrendsSection({
         <LoadingState
           title="Building sales trends"
           message="Grouping sales and expenses by business day."
+          compact
         />
       </View>
     );
@@ -205,7 +206,7 @@ export function SalesTrendsSection({
     <>
       <View style={styles.exportPanel}>
         <Text style={styles.exportPanelTitle}>Export data</Text>
-        <Pressable style={styles.exportButton} onPress={handleExportCsv}>
+        <Pressable accessibilityRole="button" style={styles.exportButton} onPress={handleExportCsv}>
           <Text style={styles.exportButtonText}>
             Sales trends · {monthLabel} {year}
           </Text>
@@ -266,7 +267,7 @@ export function SalesTrendsSection({
               {metricOptions.map((option) => (
                 <Pressable
                   key={option.key}
-                  accessibilityRole="button"
+                  accessibilityRole="radio"
                   accessibilityState={{ selected: metric === option.key }}
                   style={[
                     styles.metricButton,
@@ -479,12 +480,16 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   exportButton: {
-    backgroundColor: UI.colors.primary,
+    minHeight: UI.control.minTouchTarget,
+    justifyContent: "center",
+    backgroundColor: UI.colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
     borderRadius: UI.radius.small,
     paddingVertical: 11,
     alignItems: "center",
   },
-  exportButtonText: { color: "#fff", fontSize: 12, fontWeight: "700" },
+  exportButtonText: { color: UI.colors.ink, fontSize: 12, fontWeight: "700" },
   summaryCard: {
     backgroundColor: UI.colors.surface,
     borderRadius: UI.radius.large,
@@ -557,7 +562,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   metricButton: {
-    minHeight: 34,
+    minHeight: UI.control.minTouchTarget,
     justifyContent: "center",
     paddingHorizontal: 11,
     borderRadius: UI.radius.pill,
@@ -630,8 +635,8 @@ const styles = StyleSheet.create({
     minHeight: 45,
     paddingHorizontal: 7,
   },
-  tableHeaderText: { color: UI.colors.inkMuted, fontSize: 9, fontWeight: "800" },
-  tableText: { color: UI.colors.ink, fontSize: 10 },
+  tableHeaderText: { color: UI.colors.inkMuted, fontSize: 10, fontWeight: "800" },
+  tableText: { color: UI.colors.ink, fontSize: 11 },
   dateCell: { flex: 1.45, minWidth: 0 },
   smallCell: { flex: 0.68, minWidth: 0, textAlign: "right" },
   moneyCell: { flex: 1.18, minWidth: 0, textAlign: "right" },

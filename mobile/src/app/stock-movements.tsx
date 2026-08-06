@@ -1,7 +1,6 @@
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -14,6 +13,11 @@ import {
   StockMovement,
 } from "../api/stockMovements";
 import { FloatingBackToTop } from "../components/FloatingBackToTop";
+import { UI } from "../constants/ui";
+import { sharedStyles } from "../constants/sharedStyles";
+import { LoadingState } from "../components/LoadingState";
+import { ErrorState } from "../components/ErrorState";
+import { EmptyState } from "../components/EmptyState";
 
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);
@@ -54,7 +58,7 @@ export default function StockMovementsScreen() {
 
       setMovements(result.movements);
       setTotal(result.meta.total);
-    } catch (err) {
+    } catch {
       setError("Failed to load stock movements");
     } finally {
       setLoading(false);
@@ -74,23 +78,11 @@ export default function StockMovementsScreen() {
   };
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-        <Text style={styles.loadingText}>Loading stock movements...</Text>
-      </View>
-    );
+    return <LoadingState title="Loading stock activity" message="Getting recent inventory changes." />;
   }
 
   if (error) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>{error}</Text>
-        <Text style={styles.smallText}>
-          Make sure your backend is running and API URL is correct.
-        </Text>
-      </View>
-    );
+    return <ErrorState title="Failed to load stock activity" message="Please check your connection and try again." onRetry={loadMovements} />;
   }
 
   return (
@@ -107,20 +99,24 @@ export default function StockMovementsScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <Text style={styles.title}>Stock Movements</Text>
+      <Text accessibilityRole="header" style={styles.title}>Inventory history</Text>
       <Text style={styles.subtitle}>Total movements: {total}</Text>
 
       <Pressable
         style={styles.addButton}
         onPress={() => router.push("/adjust-stock" as any)}
+        accessibilityRole="button"
       >
         <Text style={styles.addButtonText}>Restock / Adjust Stock</Text>
       </Pressable>
 
       {movements.length === 0 ? (
-        <View style={styles.emptyBox}>
-          <Text style={styles.emptyText}>No stock movements yet. Restock or create an order to see activity here.</Text>
-        </View>
+        <EmptyState
+          title="No stock activity yet"
+          message="Restock a product or create an order to see inventory changes here."
+          actionLabel="Adjust stock"
+          onAction={() => router.push("/adjust-stock" as any)}
+        />
       ) : (
         movements.map((movement) => {
           const isStockIn = movement.quantity > 0;
@@ -192,77 +188,39 @@ export default function StockMovementsScreen() {
 }
 
 const styles = StyleSheet.create({
-  screenShell: { flex: 1, backgroundColor: "#f7f7f7" },
+  screenShell: { flex: 1, backgroundColor: UI.colors.canvas },
   screen: {
     flex: 1,
-    backgroundColor: "#f7f7f7",
+    backgroundColor: UI.colors.canvas,
   },
   content: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-    backgroundColor: "#fff",
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-  },
-  errorText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "red",
-    marginBottom: 8,
-  },
-  smallText: {
-    fontSize: 14,
-    color: "#666",
-    textAlign: "center",
+    ...sharedStyles.screenContent,
   },
   title: {
-    fontSize: 28,
-    fontWeight: "800",
-    marginBottom: 4,
+    ...sharedStyles.pageTitle,
   },
   subtitle: {
-    fontSize: 14,
-    color: "#666",
+    fontSize: UI.type.body,
+    color: UI.colors.inkMuted,
     marginBottom: 16,
   },
   addButton: {
-    backgroundColor: "#111",
+    minHeight: UI.control.minTouchTarget,
+    justifyContent: "center",
+    backgroundColor: UI.colors.primary,
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: "center",
     marginBottom: 16,
   },
   addButtonText: {
-    color: "#fff",
+    color: UI.colors.onDark,
     fontSize: 15,
     fontWeight: "800",
   },
-  emptyBox: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "#eee",
-  },
-  emptyText: {
-    fontSize: 14,
-    color: "#777",
-  },
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 18,
+    ...sharedStyles.card,
     marginBottom: 14,
-    borderWidth: 1,
-    borderColor: "#eee",
   },
   cardHeader: {
     flexDirection: "row",
@@ -280,29 +238,29 @@ const styles = StyleSheet.create({
   productSku: {
     marginTop: 4,
     fontSize: 13,
-    color: "#666",
+    color: UI.colors.inkMuted,
   },
   positiveQty: {
     fontSize: 18,
     fontWeight: "900",
-    color: "green",
+    color: UI.colors.success,
   },
   negativeQty: {
     fontSize: 18,
     fontWeight: "900",
-    color: "red",
+    color: UI.colors.danger,
   },
   infoRow: {
     paddingVertical: 8,
     borderTopWidth: 1,
-    borderTopColor: "#eee",
+    borderTopColor: UI.colors.border,
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 12,
   },
   label: {
     fontSize: 14,
-    color: "#666",
+    color: UI.colors.inkMuted,
   },
   value: {
     fontSize: 14,
@@ -313,11 +271,11 @@ const styles = StyleSheet.create({
   noteBox: {
     marginTop: 10,
     padding: 12,
-    backgroundColor: "#f7f7f7",
+    backgroundColor: UI.colors.surfaceMuted,
     borderRadius: 10,
   },
   note: {
     fontSize: 13,
-    color: "#555",
+    color: UI.colors.inkMuted,
   },
 });

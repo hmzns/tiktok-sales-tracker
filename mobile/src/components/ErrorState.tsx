@@ -19,11 +19,16 @@ export function ErrorState({
       <View style={styles.icon}>
         <Text style={styles.iconText}>!</Text>
       </View>
-      <Text style={styles.title}>{title}</Text>
+      <Text accessibilityRole="header" style={styles.title}>{title}</Text>
       <Text style={styles.message}>{message}</Text>
 
       {onRetry ? (
-        <Pressable style={styles.button} onPress={onRetry}>
+        <Pressable
+          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+          onPress={onRetry}
+          accessibilityRole="button"
+          accessibilityLabel={retryLabel}
+        >
           <Text style={styles.buttonText}>{retryLabel}</Text>
         </Pressable>
       ) : null}
@@ -77,9 +82,12 @@ const styles = StyleSheet.create({
     borderRadius: UI.radius.small,
     paddingVertical: 12,
     paddingHorizontal: 20,
+    minHeight: UI.control.minTouchTarget,
+    justifyContent: "center",
   },
+  buttonPressed: { opacity: 0.82 },
   buttonText: {
-    color: "#fff",
+    color: UI.colors.onDark,
     fontWeight: "700",
   },
 });

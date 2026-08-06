@@ -15,11 +15,8 @@ enum SalesPlatform {
 }
 
 enum SalesOrderStatus {
-  PENDING
-  PAID
-  PACKING
-  SHIPPED
-  DELIVERED
+  NEEDS_ITEMS
+  COMPLETED
   CANCELLED
   REFUNDED
 }
@@ -27,12 +24,6 @@ enum SalesOrderStatus {
 enum OrderSource {
   MANUAL
   TIKTOK
-}
-
-enum ImportStatus {
-  NEEDS_ITEMS
-  READY
-  IMPORT_FAILED
 }
 
 enum DiscountType {
@@ -102,13 +93,12 @@ model SalesOrder {
   orderNumber    String?      @unique
   tiktokOrderId  String?      @unique
   source         OrderSource  @default(MANUAL)
-  importStatus   ImportStatus @default(READY)
   importedAt     DateTime?
   rawImportData  Json?
   stockProcessed Boolean      @default(false)
 
   platform SalesPlatform    @default(MANUAL)
-  status   SalesOrderStatus @default(PENDING)
+  status   SalesOrderStatus @default(COMPLETED)
 
   customerName String?
 

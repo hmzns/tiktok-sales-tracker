@@ -10,6 +10,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { EmptyState } from "../../components/EmptyState";
@@ -18,9 +19,11 @@ import { ErrorState } from "../../components/ErrorState";
 import { Expense, ExpenseCategory, deleteExpense, getExpenses } from "../../api/expenses";
 import { UI } from "../../constants/ui";
 import { FloatingBackToTop } from "../../components/FloatingBackToTop";
+import { StatusBadge } from "../../components/ui/StatusBadge";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const formatRM = (value: number) => {
-  return `RM ${value.toFixed(2)}`;
+  return Number.isFinite(value) ? `RM ${value.toFixed(2)}` : "—";
 };
 
 const formatDate = (dateString: string) => {
@@ -45,6 +48,8 @@ const CATEGORY_FILTERS: (ExpenseCategory | "ALL")[] = [
 ];
 
 export default function ExpensesScreen() {
+  const { width } = useWindowDimensions();
+  const isCompactLayout = width < 600;
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [total, setTotal] = useState(0);
   const [totalAmount, setTotalAmount] = useState(0);
@@ -72,7 +77,7 @@ export default function ExpensesScreen() {
       );
 
       setTotalAmount(amount);
-    } catch (err) {
+    } catch {
       setError("Failed to load expenses");
     } finally {
       setLoading(false);
@@ -89,22 +94,19 @@ export default function ExpensesScreen() {
     loadExpenses();
   };
 
-  const handleDeleteExpense = async (expenseId: string) => {
+  const handleDeleteExpense = async (expense: Expense) => {
     const deleteSelectedExpense = async () => {
       try {
-        await deleteExpense(expenseId);
+        await deleteExpense(expense.id);
         await loadExpenses();
-      } catch (err: any) {
-        const message =
-          err?.response?.data?.message ?? "Failed to delete expense";
-
-        Alert.alert("Error", message);
+      } catch {
+        Alert.alert("Delete failed", "Unable to delete this expense. Please try again.");
       }
     };
 
     if (Platform.OS === "web") {
       const confirmed = window.confirm(
-        "Are you sure you want to delete this expense?"
+        `Delete “${expense.title}”? This cannot be undone.`
       );
 
       if (confirmed) {
@@ -116,7 +118,7 @@ export default function ExpensesScreen() {
 
     Alert.alert(
       "Delete Expense",
-      "Are you sure you want to delete this expense?",
+      `Delete “${expense.title}”? This cannot be undone.`,
       [
         {
           text: "Cancel",
@@ -134,8 +136,8 @@ export default function ExpensesScreen() {
   if (loading) {
     return (
       <LoadingState
-        title="Getting all the money you spent..."
-        message="Stop spending on ZUS Coffee if you want to earn more profit."
+        title="Loading expenses"
+        message="Getting your latest business expense records."
       />
     );
   }
@@ -145,7 +147,7 @@ export default function ExpensesScreen() {
       <View style={styles.screen}>
         <ErrorState
           title="Failed to load expenses"
-          message="Please check your connection or backend API, then try again."
+          message="Please check your connection and try again."
           onRetry={loadExpenses}
         />
       </View>
@@ -215,13 +217,13 @@ export default function ExpensesScreen() {
       document.body.removeChild(link);
 
       URL.revokeObjectURL(url);
-    } catch (error) {
+    } catch {
       Alert.alert("Export failed", "Unable to export expenses.");
     }
   };
 
   return (
-    <View style={styles.screenShell}>
+    <SafeAreaView edges={["top"]} style={styles.screenShell}>
     <ScrollView
       ref={scrollRef}
       style={styles.screen}
@@ -235,35 +237,42 @@ export default function ExpensesScreen() {
       }
     >
       <View style={styles.pageHeader}>
-        <View style={styles.flexItem}>
-          <Text style={styles.title}>Expenses</Text>
+        <View style={[styles.headerCopy, isCompactLayout && styles.compactHeaderCopy]}>
+          <Text accessibilityRole="header" style={styles.title}>Expenses</Text>
           <Text style={styles.subtitle}>
-            You might wanna think twice on your spending
+            Track operating costs and business spending
           </Text>
         </View>
-        <View style={styles.headerActions}>
-          <Pressable style={styles.headerExportButton} onPress={handleExportExpensesCsv}>
+        <View style={[styles.headerActions, isCompactLayout && styles.compactHeaderActions]}>
+          <Pressable accessibilityRole="button" style={[styles.headerExportButton, isCompactLayout && styles.compactHeaderAction]} onPress={handleExportExpensesCsv}>
             <Text style={styles.headerExportButtonText}>Export</Text>
           </Pressable>
           <Pressable
             style={({ pressed }) => [
               styles.headerAddButton,
+              isCompactLayout && styles.compactHeaderAction,
               pressed && styles.primaryPressed,
             ]}
             onPress={() => router.push("/add-expense" as any)}
             accessibilityLabel="Add expense"
+            accessibilityRole="button"
           >
             <Text style={styles.headerAddButtonText}>+ Add expense</Text>
           </Pressable>
         </View>
       </View>
 
-      <View style={styles.summaryCard}>
-        <View>
+      <View style={[styles.summaryCard, !isCompactLayout && styles.webSummaryCard]}>
+        <View style={styles.summaryMain}>
           <Text style={styles.summaryLabel}>Shown total</Text>
-          <Text style={styles.summaryValue}>{formatRM(totalAmount)}</Text>
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={styles.summaryValue}>{formatRM(totalAmount)}</Text>
         </View>
-        <View style={styles.countPill}>
+        <View
+          style={[
+            styles.countPill,
+            isCompactLayout ? styles.mobileCountPill : styles.webCountPill,
+          ]}
+        >
           <Text style={styles.countValue}>{total}</Text>
           <Text style={styles.countLabel}>records</Text>
         </View>
@@ -280,8 +289,9 @@ export default function ExpensesScreen() {
             onChangeText={setSearch}
             onSubmitEditing={loadExpenses}
             returnKeyType="search"
+            accessibilityLabel="Search expenses"
           />
-          <Pressable style={styles.searchButton} onPress={loadExpenses}>
+          <Pressable accessibilityRole="button" style={styles.searchButton} onPress={loadExpenses}>
             <Text style={styles.searchButtonText}>Search</Text>
           </Pressable>
         </View>
@@ -303,6 +313,8 @@ export default function ExpensesScreen() {
               onPress={() => {
                 setCategoryFilter(category);
               }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: categoryFilter === category }}
             >
               <Text
                 style={[
@@ -327,6 +339,8 @@ export default function ExpensesScreen() {
         <EmptyState
           title="No expenses yet"
           message="Add expenses such as packaging, delivery, ads, or supplies."
+          actionLabel="Add expense"
+          onAction={() => router.push("/add-expense" as any)}
         />
       ) : (
         expenses.map((expense) => (
@@ -344,9 +358,12 @@ export default function ExpensesScreen() {
               </View>
             </View>
 
-            <Text style={styles.categoryBadge}>
-              {expense.category.toLowerCase()}
-            </Text>
+            <StatusBadge
+              label={expense.category
+                .toLowerCase()
+                .replace(/^./, (letter) => letter.toUpperCase())}
+              tone="neutral"
+            />
 
             {expense.description ? (
               <View style={styles.descriptionBox}>
@@ -363,13 +380,17 @@ export default function ExpensesScreen() {
                     params: { expenseId: expense.id },
                   })
                 }
+                accessibilityRole="button"
+                accessibilityLabel={`Edit ${expense.title}`}
               >
                 <Text style={styles.editButtonText}>Edit</Text>
               </Pressable>
 
               <Pressable
                 style={styles.deleteButton}
-                onPress={() => handleDeleteExpense(expense.id)}
+                onPress={() => handleDeleteExpense(expense)}
+                accessibilityRole="button"
+                accessibilityLabel={`Delete ${expense.title}`}
               >
                 <Text style={styles.deleteButtonText}>Delete</Text>
               </Pressable>
@@ -382,7 +403,7 @@ export default function ExpensesScreen() {
       visible={showBackToTop}
       onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
     />
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -394,7 +415,7 @@ const styles = StyleSheet.create({
   screenShell: { flex: 1, backgroundColor: UI.colors.canvas },
   content: {
     width: "100%",
-    maxWidth: 760,
+    maxWidth: UI.layout.contentMaxWidth,
     alignSelf: "center",
     padding: 20,
     paddingTop: 28,
@@ -402,10 +423,13 @@ const styles = StyleSheet.create({
   },
   pageHeader: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     gap: 16,
     marginBottom: 22,
   },
+  headerCopy: { flex: 1, minWidth: 260 },
+  compactHeaderCopy: { minWidth: "100%" },
   eyebrow: {
     color: UI.colors.primary,
     fontSize: 11,
@@ -425,7 +449,9 @@ const styles = StyleSheet.create({
     color: UI.colors.inkMuted,
     marginTop: 4,
   },
-  headerActions: { flexDirection: "row", gap: 8 },
+  headerActions: { flexDirection: "row", flexShrink: 0, justifyContent: "flex-end", gap: 8 },
+  compactHeaderActions: { width: "100%", flexDirection: "row" },
+  compactHeaderAction: { flex: 1, minWidth: 0 },
   headerExportButton: {
     minHeight: 44,
     alignItems: "center",
@@ -484,35 +510,61 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   summaryCard: {
-    minHeight: 128,
-    flexDirection: "row",
+    width: "100%",
+    maxWidth: 360,
+    minHeight: 104,
+    alignSelf: "center",
+    flexDirection: "column",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
     backgroundColor: UI.colors.ink,
     borderRadius: UI.radius.large,
-    padding: 22,
+    padding: 18,
     marginBottom: 16,
     overflow: "hidden",
     ...UI.shadow,
+  },
+  webSummaryCard: {
+    maxWidth: "100%",
+    minHeight: 104,
+    alignSelf: "stretch",
+    padding: 20,
   },
   summaryLabel: {
     fontSize: 13,
     color: "#D0D5DD",
     marginBottom: 8,
+    textAlign: "center",
   },
+  summaryMain: { alignItems: "center" },
   summaryValue: {
     color: "#FFFFFF",
     fontSize: 29,
     fontWeight: "800",
     letterSpacing: -0.5,
+    textAlign: "center",
   },
   countPill: {
-    minWidth: 72,
+    flexDirection: "row",
+    gap: 4,
     alignItems: "center",
     backgroundColor: "#FFFFFF14",
     borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    paddingVertical: 7,
+    paddingHorizontal: 11,
+    marginTop: 10,
+  },
+  mobileCountPill: {
+    position: "absolute",
+    right: 18,
+    top: 30,
+    marginTop: 0,
+  },
+  webCountPill: {
+    position: "absolute",
+    right: 20,
+    top: 30,
+    marginTop: 0,
   },
   countValue: {
     color: "#FFFFFF",
@@ -670,18 +722,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "800",
   },
-  categoryBadge: {
-    alignSelf: "flex-start",
-    overflow: "hidden",
-    color: UI.colors.inkMuted,
-    backgroundColor: UI.colors.surfaceMuted,
-    borderRadius: UI.radius.pill,
-    paddingVertical: 5,
-    paddingHorizontal: 9,
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "capitalize",
-  },
   descriptionBox: {
     marginTop: 12,
     padding: 12,
@@ -703,26 +743,33 @@ const styles = StyleSheet.create({
   },
   editButton: {
     flex: 1,
+    minHeight: UI.control.minTouchTarget,
     backgroundColor: UI.colors.ink,
     borderRadius: UI.radius.small,
     paddingVertical: 10,
     alignItems: "center",
+    justifyContent: "center",
   },
   editButtonText: {
     color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "700",
+    textAlign: "center",
   },
   deleteButton: {
+    flex: 1,
+    minHeight: UI.control.minTouchTarget,
     backgroundColor: UI.colors.dangerSoft,
     borderRadius: UI.radius.small,
     paddingVertical: 10,
     paddingHorizontal: 18,
     alignItems: "center",
+    justifyContent: "center",
   },
   deleteButtonText: {
     color: UI.colors.danger,
     fontSize: 13,
     fontWeight: "700",
+    textAlign: "center",
   },
 });

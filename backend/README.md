@@ -250,7 +250,7 @@ POST /orders
 {
   "orderNumber": "ORD001",
   "platform": "MANUAL",
-  "status": "PAID",
+  "status": "COMPLETED",
   "customerName": "Aina",
   "items": [
     {

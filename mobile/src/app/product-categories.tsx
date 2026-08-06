@@ -1,6 +1,5 @@
 import { useCallback, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   RefreshControl,
@@ -18,6 +17,11 @@ import {
   ProductCategory,
 } from "../api/productCategories";
 import { FloatingBackToTop } from "../components/FloatingBackToTop";
+import { UI } from "../constants/ui";
+import { sharedStyles } from "../constants/sharedStyles";
+import { StatusBadge } from "../components/ui/StatusBadge";
+import { LoadingState } from "../components/LoadingState";
+import { showSuccessMessage } from "../utils/showSuccessMessage";
 
 export default function ProductCategoriesScreen() {
   const [categories, setCategories] = useState<ProductCategory[]>([]);
@@ -34,11 +38,8 @@ export default function ProductCategoriesScreen() {
     try {
       const result = await getProductCategories();
       setCategories(result);
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.message ?? "Failed to load categories";
-
-      Alert.alert("Error", message);
+    } catch {
+      Alert.alert("Unable to load categories", "Please check your connection and try again.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -59,14 +60,13 @@ export default function ProductCategoriesScreen() {
         description: description.trim() || undefined,
       });
 
+      showSuccessMessage("Category created successfully.");
+
       setName("");
       setDescription("");
       await loadCategories();
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.message ?? "Failed to create category";
-
-      Alert.alert("Error", message);
+    } catch {
+      Alert.alert("Save failed", "Unable to create this category. Please review the details and try again.");
     } finally {
       setSaving(false);
     }
@@ -85,12 +85,7 @@ export default function ProductCategoriesScreen() {
   );
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator />
-        <Text style={styles.loadingText}>Loading categories...</Text>
-      </View>
-    );
+    return <LoadingState title="Loading categories" message="Getting your product categories." />;
   }
 
   return (
@@ -102,11 +97,13 @@ export default function ProductCategoriesScreen() {
         setShowBackToTop(event.nativeEvent.contentOffset.y > 240)
       }
       scrollEventThrottle={16}
+      automaticallyAdjustKeyboardInsets
+      keyboardShouldPersistTaps="handled"
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <Text style={styles.title}>Product Categories</Text>
+      <Text accessibilityRole="header" style={styles.title}>Manage categories</Text>
       <Text style={styles.subtitle}>
         Add categories to organize your products.
       </Text>
@@ -118,6 +115,7 @@ export default function ProductCategoriesScreen() {
         <TextInput
           style={styles.input}
           placeholder="Example: Lipstick"
+          placeholderTextColor={UI.colors.inkSubtle}
           value={name}
           onChangeText={setName}
         />
@@ -126,6 +124,7 @@ export default function ProductCategoriesScreen() {
         <TextInput
           style={[styles.input, styles.textArea]}
           placeholder="Optional description"
+          placeholderTextColor={UI.colors.inkSubtle}
           value={description}
           onChangeText={setDescription}
           multiline
@@ -135,6 +134,8 @@ export default function ProductCategoriesScreen() {
           style={[styles.saveButton, saving && styles.disabledButton]}
           onPress={handleCreateCategory}
           disabled={saving}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: saving, busy: saving }}
         >
           <Text style={styles.saveButtonText}>
             {saving ? "Saving..." : "Add Category"}
@@ -155,14 +156,10 @@ export default function ProductCategoriesScreen() {
               {category.description || "No description"}
             </Text>
 
-            <Text
-              style={[
-                styles.statusText,
-                category.isActive ? styles.activeText : styles.inactiveText,
-              ]}
-            >
-              {category.isActive ? "Active" : "Inactive"}
-            </Text>
+            <StatusBadge
+              label={category.isActive ? "Active" : "Inactive"}
+              tone={category.isActive ? "success" : "neutral"}
+            />
 
             <Pressable
 							style={styles.editButton}
@@ -172,6 +169,8 @@ export default function ProductCategoriesScreen() {
 									params: { categoryId: category.id },
 									})
 							}
+							accessibilityRole="button"
+							accessibilityLabel={`Edit ${category.name}`}
 							>
 							<Text style={styles.editButtonText}>Edit Category</Text>
 							</Pressable>
@@ -188,55 +187,32 @@ export default function ProductCategoriesScreen() {
 }
 
 const styles = StyleSheet.create({
-  screenShell: { flex: 1, backgroundColor: "#f6f6f6" },
+  screenShell: { flex: 1, backgroundColor: UI.colors.canvas },
   container: {
-    padding: 20,
-    backgroundColor: "#f6f6f6",
+    ...sharedStyles.formContent,
+    backgroundColor: UI.colors.canvas,
     flexGrow: 1,
   },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadingText: {
-    marginTop: 10,
-    color: "#666",
-  },
   title: {
-    fontSize: 26,
-    fontWeight: "900",
-    marginBottom: 4,
+    ...sharedStyles.pageTitle,
   },
   subtitle: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 20,
+    ...sharedStyles.pageSubtitle,
   },
   formCard: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 16,
+    ...sharedStyles.card,
     marginBottom: 20,
   },
   formTitle: {
-    fontSize: 18,
-    fontWeight: "900",
+    ...sharedStyles.sectionTitle,
     marginBottom: 14,
   },
   label: {
-    fontSize: 13,
-    fontWeight: "800",
-    marginBottom: 6,
-    color: "#333",
+    ...sharedStyles.label,
   },
   input: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 14,
+    ...sharedStyles.input,
+    ...sharedStyles.inputWeb,
     marginBottom: 14,
   },
   textArea: {
@@ -244,35 +220,33 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
   saveButton: {
-    backgroundColor: "#111",
-    borderRadius: 10,
-    padding: 14,
+    minHeight: UI.control.minTouchTarget,
+    justifyContent: "center",
+    backgroundColor: UI.colors.primary,
+    borderRadius: UI.radius.small,
+    padding: 12,
     alignItems: "center",
   },
   disabledButton: {
     opacity: 0.6,
   },
   saveButtonText: {
-    color: "#fff",
+    color: UI.colors.onDark,
     fontWeight: "900",
     fontSize: 15,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: "900",
-    marginBottom: 12,
+    ...sharedStyles.sectionTitle,
   },
   emptyText: {
-    backgroundColor: "#fff",
+    backgroundColor: UI.colors.surface,
     borderRadius: 10,
     padding: 14,
-    color: "#666",
+    color: UI.colors.inkMuted,
     textAlign: "center",
   },
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 16,
+    ...sharedStyles.card,
     marginBottom: 12,
   },
   categoryName: {
@@ -282,7 +256,7 @@ const styles = StyleSheet.create({
   },
   descriptionText: {
     fontSize: 13,
-    color: "#666",
+    color: UI.colors.inkMuted,
     marginBottom: 8,
   },
   statusText: {
@@ -296,14 +270,16 @@ const styles = StyleSheet.create({
     color: "#cc3333",
   },
 	editButton: {
-		backgroundColor: "#111",
+		minHeight: UI.control.minTouchTarget,
+		justifyContent: "center",
+		backgroundColor: UI.colors.ink,
 		borderRadius: 10,
 		padding: 12,
 		alignItems: "center",
 		marginTop: 12,
 	},
 	editButtonText: {
-		color: "#fff",
+		color: UI.colors.onDark,
 		fontWeight: "800",
 	},
 });

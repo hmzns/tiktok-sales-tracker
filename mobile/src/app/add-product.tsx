@@ -12,11 +12,14 @@ import {
 } from "react-native";
 import { createProduct } from "../api/products";
 import { FieldError } from "../components/FieldError";
+import { AppButton } from "../components/ui/AppButton";
 import { showSuccessMessage } from "../utils/showSuccessMessage";
 import {
   getProductCategories,
   ProductCategory,
 } from "../api/productCategories";
+import { UI } from "../constants/ui";
+import { sharedStyles } from "../constants/sharedStyles";
 
 export default function AddProductScreen() {
   const [name, setName] = useState("");
@@ -34,7 +37,7 @@ export default function AddProductScreen() {
     try {
       const categoryList = await getProductCategories();
       setCategories(categoryList.filter((category) => category.isActive));
-    } catch (err) {
+    } catch {
       Alert.alert("Error", "Failed to load categories");
     } finally {
       setLoadingCategories(false);
@@ -140,19 +143,21 @@ export default function AddProductScreen() {
       showSuccessMessage("Product created successfully.");
 
       router.replace("/products" as any);
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.message ?? "Failed to create product";
-
-      Alert.alert("Error", message);
+    } catch {
+      Alert.alert("Save failed", "Unable to create this product. Please review the details and try again.");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Add Product</Text>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      automaticallyAdjustKeyboardInsets
+      keyboardShouldPersistTaps="handled"
+    >
+      <Text accessibilityRole="header" style={styles.title}>Product details</Text>
       <Text style={styles.subtitle}>Create a new product for tracking.</Text>
 
       <View style={styles.formCard}>
@@ -160,6 +165,7 @@ export default function AddProductScreen() {
         <TextInput
           style={styles.input}
           placeholder="Example: Tudung Bawal Premium"
+          placeholderTextColor={UI.colors.inkSubtle}
           value={name}
           onChangeText={(value) => {
             setName(value);
@@ -172,6 +178,7 @@ export default function AddProductScreen() {
         <TextInput
           style={styles.input}
           placeholder="Example: TDG001"
+          placeholderTextColor={UI.colors.inkSubtle}
           value={sku}
           onChangeText={(value) => {
             setSku(value);
@@ -185,12 +192,14 @@ export default function AddProductScreen() {
         <TextInput
           style={styles.input}
           placeholder="Example: 12"
+          placeholderTextColor={UI.colors.inkSubtle}
           value={costPrice}
           onChangeText={(value) => {
             setCostPrice(value);
             setFieldErrors((current) => ({ ...current, costPrice: "" }));
           }}
-          keyboardType="numeric"
+          keyboardType="decimal-pad"
+          inputMode="decimal"
         />
         <FieldError message={fieldErrors.costPrice} />
 
@@ -198,12 +207,14 @@ export default function AddProductScreen() {
         <TextInput
           style={styles.input}
           placeholder="Example: 25"
+          placeholderTextColor={UI.colors.inkSubtle}
           value={sellPrice}
           onChangeText={(value) => {
             setSellPrice(value);
             setFieldErrors((current) => ({ ...current, sellPrice: "" }));
           }}
-          keyboardType="numeric"
+          keyboardType="decimal-pad"
+          inputMode="decimal"
         />
         <FieldError message={fieldErrors.sellPrice} />
 
@@ -211,12 +222,14 @@ export default function AddProductScreen() {
         <TextInput
           style={styles.input}
           placeholder="Example: 20"
+          placeholderTextColor={UI.colors.inkSubtle}
           value={stock}
           onChangeText={(value) => {
             setStock(value);
             setFieldErrors((current) => ({ ...current, stock: "" }));
           }}
           keyboardType="numeric"
+          inputMode="numeric"
         />
         <FieldError message={fieldErrors.stock} />
 
@@ -224,7 +237,7 @@ export default function AddProductScreen() {
 
         {loadingCategories ? (
           <View style={styles.loadingCategory}>
-            <ActivityIndicator />
+            <ActivityIndicator color={UI.colors.primary} />
             <Text style={styles.smallText}>Loading categories...</Text>
           </View>
         ) : (
@@ -235,6 +248,8 @@ export default function AddProductScreen() {
                 categoryId === null && styles.categoryChipSelected,
               ]}
               onPress={() => setCategoryId(null)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: categoryId === null }}
             >
               <Text
                 style={[
@@ -254,6 +269,8 @@ export default function AddProductScreen() {
                   categoryId === category.id && styles.categoryChipSelected,
                 ]}
                 onPress={() => setCategoryId(category.id)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: categoryId === category.id }}
               >
                 <Text
                   style={[
@@ -269,19 +286,16 @@ export default function AddProductScreen() {
           </View>
         )}
 
-        <Pressable
-          style={[styles.submitButton, saving && styles.submitButtonDisabled]}
+        <View style={styles.actionStack}>
+        <AppButton
+          label="Create Product"
+          loadingLabel="Saving..."
           onPress={handleSubmit}
           disabled={saving}
-        >
-          <Text style={styles.submitButtonText}>
-            {saving ? "Saving..." : "Create Product"}
-          </Text>
-        </Pressable>
-
-        <Pressable style={styles.cancelButton} onPress={() => router.back()}>
-          <Text style={styles.cancelButtonText}>Cancel</Text>
-        </Pressable>
+          loading={saving}
+        />
+        <AppButton label="Cancel" variant="secondary" onPress={() => router.back()} />
+        </View>
       </View>
     </ScrollView>
   );
@@ -289,44 +303,26 @@ export default function AddProductScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    flex: 1,
-    backgroundColor: "#f7f7f7",
+    ...sharedStyles.screen,
   },
   content: {
-    padding: 20,
-    paddingBottom: 40,
+    ...sharedStyles.formContent,
   },
   title: {
-    fontSize: 28,
-    fontWeight: "800",
-    marginBottom: 4,
+    ...sharedStyles.pageTitle,
   },
   subtitle: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 20,
+    ...sharedStyles.pageSubtitle,
   },
   formCard: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "#eee",
+    ...sharedStyles.card,
   },
   label: {
-    fontSize: 14,
-    fontWeight: "700",
-    marginBottom: 8,
-    marginTop: 14,
+    ...sharedStyles.label,
   },
   input: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    backgroundColor: "#fff",
+    ...sharedStyles.input,
+    ...sharedStyles.inputWeb,
   },
   loadingCategory: {
     flexDirection: "row",
@@ -336,7 +332,7 @@ const styles = StyleSheet.create({
   },
   smallText: {
     fontSize: 13,
-    color: "#666",
+    color: UI.colors.inkMuted,
   },
   categoryList: {
     flexDirection: "row",
@@ -344,50 +340,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   categoryChip: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: "#fff",
+    ...sharedStyles.chip,
   },
   categoryChipSelected: {
-    backgroundColor: "#111",
-    borderColor: "#111",
+    ...sharedStyles.chipSelected,
   },
   categoryChipText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#333",
+    ...sharedStyles.chipText,
   },
   categoryChipTextSelected: {
-    color: "#fff",
+    ...sharedStyles.chipTextSelected,
   },
-  submitButton: {
-    backgroundColor: "#111",
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 24,
-  },
-  submitButtonDisabled: {
-    opacity: 0.6,
-  },
-  submitButtonText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "800",
-  },
-  cancelButton: {
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: "#ddd",
-  },
-  cancelButtonText: {
-    fontSize: 15,
-    fontWeight: "800",
-  },
+  actionStack: { gap: UI.spacing.sm, marginTop: UI.spacing.xl },
 });

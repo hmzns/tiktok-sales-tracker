@@ -1,15 +1,18 @@
 import { Tabs } from "expo-router";
 import { StyleSheet, Text } from "react-native";
+import type { ColorValue } from "react-native";
 import { UI } from "../../constants/ui";
 
 const TabIcon = ({
   label,
   focused,
+  color,
 }: {
   label: string;
   focused: boolean;
+  color: ColorValue;
 }) => (
-  <Text style={[styles.icon, focused && styles.activeIcon]}>{label}</Text>
+  <Text style={[styles.icon, { color }, focused && styles.activeIcon]}>{label}</Text>
 );
 
 export default function TabsLayout() {
@@ -21,19 +24,22 @@ export default function TabsLayout() {
           backgroundColor: UI.colors.surface,
           borderTopColor: UI.colors.border,
           borderTopWidth: 1,
-          height: 72,
+          minHeight: 68,
           paddingTop: 8,
           paddingBottom: 8,
         },
         tabBarItemStyle: {
           borderRadius: UI.radius.medium,
           marginHorizontal: 2,
+          minHeight: 52,
         },
+        tabBarActiveBackgroundColor: UI.colors.primarySoft,
+        tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: UI.colors.primary,
         tabBarInactiveTintColor: UI.colors.inkMuted,
         tabBarLabelStyle: {
           fontSize: 11,
-          fontWeight: "600",
+          fontWeight: "700",
           marginTop: 1,
         },
       }}
@@ -43,8 +49,9 @@ export default function TabsLayout() {
         options={{
           title: "Dashboard",
           tabBarLabel: "Home",
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="⌂" focused={focused} />
+          tabBarAccessibilityLabel: "Dashboard",
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon label="⌂" focused={focused} color={color} />
           ),
         }}
       />
@@ -54,8 +61,9 @@ export default function TabsLayout() {
         options={{
           title: "Products",
           tabBarLabel: "Products",
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="□" focused={focused} />
+          tabBarAccessibilityLabel: "Products",
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon label="▦" focused={focused} color={color} />
           ),
         }}
       />
@@ -65,8 +73,9 @@ export default function TabsLayout() {
         options={{
           title: "Orders",
           tabBarLabel: "Orders",
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="≡" focused={focused} />
+          tabBarAccessibilityLabel: "Orders",
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon label="≡" focused={focused} color={color} />
           ),
         }}
       />
@@ -76,8 +85,9 @@ export default function TabsLayout() {
         options={{
           title: "Expenses",
           tabBarLabel: "Expenses",
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="−" focused={focused} />
+          tabBarAccessibilityLabel: "Expenses",
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon label="−" focused={focused} color={color} />
           ),
         }}
       />
@@ -87,8 +97,9 @@ export default function TabsLayout() {
         options={{
           title: "Reports",
           tabBarLabel: "Reports",
-          tabBarIcon: ({ focused }) => (
-            <TabIcon label="↗" focused={focused} />
+          tabBarAccessibilityLabel: "Reports",
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon label="▥" focused={focused} color={color} />
           ),
         }}
       />
@@ -101,7 +112,6 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 8,
-    color: UI.colors.inkMuted,
     fontSize: 19,
     fontWeight: "700",
     lineHeight: 23,
@@ -109,6 +119,5 @@ const styles = StyleSheet.create({
   },
   activeIcon: {
     color: UI.colors.primary,
-    backgroundColor: UI.colors.primarySoft,
   },
 });

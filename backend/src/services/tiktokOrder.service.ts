@@ -58,7 +58,7 @@ type BasicTikTokOrderCreateData = {
   orderNumber: string;
   tiktokOrderId: string;
   source: "TIKTOK";
-  importStatus: "NEEDS_ITEMS";
+  status: "NEEDS_ITEMS";
   importedAt: Date;
   rawImportData: Prisma.InputJsonObject;
   stockProcessed: false;
@@ -158,7 +158,7 @@ export const buildBasicTikTokOrderData = (
   orderNumber: order.id,
   tiktokOrderId: order.id,
   source: "TIKTOK",
-  importStatus: "NEEDS_ITEMS",
+  status: "NEEDS_ITEMS",
   importedAt,
   rawImportData: sanitizeTikTokOrderMetadata(order, shopId),
   stockProcessed: false,

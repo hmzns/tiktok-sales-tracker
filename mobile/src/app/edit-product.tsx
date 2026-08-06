@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -19,6 +18,11 @@ import {
   getProductCategories,
   ProductCategory,
 } from "../api/productCategories";
+import { LoadingState } from "../components/LoadingState";
+import { AppButton } from "../components/ui/AppButton";
+import { UI } from "../constants/ui";
+import { sharedStyles } from "../constants/sharedStyles";
+import { showSuccessMessage } from "../utils/showSuccessMessage";
 
 export default function EditProductScreen() {
   const { productId } = useLocalSearchParams<{ productId: string }>();
@@ -60,11 +64,8 @@ export default function EditProductScreen() {
       setStock(String(product.stock));
       setCategoryId(product.categoryId);
       setIsActive(product.isActive);
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.message ?? "Failed to load product";
-
-      Alert.alert("Error", message);
+    } catch {
+      Alert.alert("Unable to load product", "Please check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -104,12 +105,11 @@ export default function EditProductScreen() {
         isActive,
       });
 
-      router.replace("/products" as any);
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.message ?? "Failed to update product";
+      showSuccessMessage("Product updated successfully.");
 
-      Alert.alert("Error", message);
+      router.replace("/products" as any);
+    } catch {
+      Alert.alert("Save failed", "Unable to update this product. Please review the details and try again.");
     } finally {
       setSaving(false);
     }
@@ -120,23 +120,26 @@ export default function EditProductScreen() {
   }, [productId]);
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator />
-        <Text style={styles.loadingText}>Loading product...</Text>
-      </View>
-    );
+    return <LoadingState title="Loading product" message="Getting the latest product details." />;
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Edit Product</Text>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.container}
+      automaticallyAdjustKeyboardInsets
+      keyboardShouldPersistTaps="handled"
+    >
+      <Text accessibilityRole="header" style={styles.title}>Product details</Text>
       <Text style={styles.subtitle}>Update product details below.</Text>
+
+      <View style={styles.formCard}>
 
       <Text style={styles.label}>Product Name</Text>
       <TextInput
         style={styles.input}
         placeholder="Example: Lipmatte Red"
+        placeholderTextColor={UI.colors.inkSubtle}
         value={name}
         onChangeText={setName}
       />
@@ -145,6 +148,7 @@ export default function EditProductScreen() {
       <TextInput
         style={styles.input}
         placeholder="Example: LM-RED-01"
+        placeholderTextColor={UI.colors.inkSubtle}
         value={sku}
         onChangeText={setSku}
       />
@@ -153,27 +157,33 @@ export default function EditProductScreen() {
       <TextInput
         style={styles.input}
         placeholder="Example: 10"
+        placeholderTextColor={UI.colors.inkSubtle}
         value={costPrice}
         onChangeText={setCostPrice}
-        keyboardType="numeric"
+        keyboardType="decimal-pad"
+        inputMode="decimal"
       />
 
       <Text style={styles.label}>Sell Price</Text>
       <TextInput
         style={styles.input}
         placeholder="Example: 20"
+        placeholderTextColor={UI.colors.inkSubtle}
         value={sellPrice}
         onChangeText={setSellPrice}
-        keyboardType="numeric"
+        keyboardType="decimal-pad"
+        inputMode="decimal"
       />
 
       <Text style={styles.label}>Stock</Text>
       <TextInput
         style={styles.input}
         placeholder="Example: 50"
+        placeholderTextColor={UI.colors.inkSubtle}
         value={stock}
         onChangeText={setStock}
         keyboardType="numeric"
+        inputMode="numeric"
       />
 
       <Text style={styles.label}>Category</Text>
@@ -184,6 +194,8 @@ export default function EditProductScreen() {
           categoryId === null && styles.activeCategoryChip,
         ]}
         onPress={() => setCategoryId(null)}
+        accessibilityRole="button"
+        accessibilityState={{ selected: categoryId === null }}
       >
         <Text
           style={[
@@ -203,6 +215,8 @@ export default function EditProductScreen() {
             categoryId === category.id && styles.activeCategoryChip,
           ]}
           onPress={() => setCategoryId(category.id)}
+          accessibilityRole="button"
+          accessibilityState={{ selected: categoryId === category.id }}
         >
           <Text
             style={[
@@ -225,6 +239,8 @@ export default function EditProductScreen() {
           isActive && styles.activeStatusButton,
         ]}
         onPress={() => setIsActive(true)}
+        accessibilityRole="button"
+        accessibilityState={{ selected: isActive }}
       >
         <Text
           style={[
@@ -242,6 +258,8 @@ export default function EditProductScreen() {
           !isActive && styles.inactiveStatusButton,
         ]}
         onPress={() => setIsActive(false)}
+        accessibilityRole="button"
+        accessibilityState={{ selected: !isActive }}
       >
         <Text
           style={[
@@ -254,111 +272,56 @@ export default function EditProductScreen() {
       </Pressable>
     </View>
 
-      <Pressable
-        style={[styles.saveButton, saving && styles.disabledButton]}
+      <View style={styles.actionStack}>
+      <AppButton
+        label="Save Changes"
+        loadingLabel="Saving..."
         onPress={handleUpdateProduct}
         disabled={saving}
-      >
-        <Text style={styles.saveButtonText}>
-          {saving ? "Saving..." : "Save Changes"}
-        </Text>
-      </Pressable>
-
-      <Pressable style={styles.cancelButton} onPress={() => router.back()}>
-        <Text style={styles.cancelButtonText}>Cancel</Text>
-      </Pressable>
+        loading={saving}
+      />
+      <AppButton label="Cancel" variant="secondary" onPress={() => router.back()} />
+      </View>
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: { ...sharedStyles.screen },
   container: {
-    padding: 20,
-    backgroundColor: "#f6f6f6",
+    ...sharedStyles.formContent,
     flexGrow: 1,
   },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadingText: {
-    marginTop: 10,
-    color: "#666",
-  },
+  formCard: { ...sharedStyles.card },
   title: {
-    fontSize: 26,
-    fontWeight: "900",
-    marginBottom: 4,
+    ...sharedStyles.pageTitle,
   },
   subtitle: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 20,
+    ...sharedStyles.pageSubtitle,
   },
   label: {
-    fontSize: 13,
-    fontWeight: "800",
-    marginBottom: 6,
-    color: "#333",
+    ...sharedStyles.label,
   },
   input: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 14,
+    ...sharedStyles.input,
+    ...sharedStyles.inputWeb,
     marginBottom: 14,
   },
   categoryChip: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    ...sharedStyles.chip,
     marginBottom: 10,
   },
   activeCategoryChip: {
-    backgroundColor: "#111",
-    borderColor: "#111",
+    ...sharedStyles.chipSelected,
   },
   categoryChipText: {
-    color: "#333",
-    fontSize: 13,
-    fontWeight: "700",
+    ...sharedStyles.chipText,
   },
   activeCategoryChipText: {
-    color: "#fff",
+    ...sharedStyles.chipTextSelected,
   },
-  saveButton: {
-    backgroundColor: "#111",
-    borderRadius: 10,
-    padding: 14,
-    alignItems: "center",
-    marginTop: 14,
-  },
-  disabledButton: {
-    opacity: 0.6,
-  },
-  saveButtonText: {
-    color: "#fff",
-    fontWeight: "900",
-    fontSize: 15,
-  },
-  cancelButton: {
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: "#ddd",
-  },
-  cancelButtonText: {
-    fontSize: 15,
-    fontWeight: "800",
-  },
+	actionStack: { gap: UI.spacing.sm, marginTop: UI.spacing.xl },
 	statusRow: {
 		flexDirection: "row",
 		gap: 10,
@@ -366,30 +329,30 @@ const styles = StyleSheet.create({
 	},
 	statusButton: {
 		flex: 1,
-		backgroundColor: "#fff",
+		backgroundColor: UI.colors.surface,
 		borderWidth: 1,
-		borderColor: "#ddd",
+		borderColor: UI.colors.borderStrong,
 		borderRadius: 10,
 		padding: 12,
 		alignItems: "center",
 	},
 	activeStatusButton: {
-		backgroundColor: "#e8f8ee",
-		borderColor: "#1f8f46",
+		backgroundColor: UI.colors.successSoft,
+		borderColor: UI.colors.success,
 	},
 	inactiveStatusButton: {
-		backgroundColor: "#ffecec",
-		borderColor: "#cc3333",
+		backgroundColor: UI.colors.dangerSoft,
+		borderColor: UI.colors.danger,
 	},
 	statusButtonText: {
 		fontSize: 13,
 		fontWeight: "800",
-		color: "#333",
+		color: UI.colors.ink,
 	},
 	activeStatusButtonText: {
-		color: "#1f8f46",
+		color: UI.colors.success,
 	},
 	inactiveStatusButtonText: {
-		color: "#cc3333",
+		color: UI.colors.danger,
 	},
 });

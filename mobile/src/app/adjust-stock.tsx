@@ -16,6 +16,9 @@ import {
   AdjustStockInput,
 } from "../api/stockMovements";
 import { FloatingBackToTop } from "../components/FloatingBackToTop";
+import { UI } from "../constants/ui";
+import { sharedStyles } from "../constants/sharedStyles";
+import { showSuccessMessage } from "../utils/showSuccessMessage";
 
 type ManualStockType = AdjustStockInput["type"];
 
@@ -69,7 +72,7 @@ export default function AdjustStockScreen() {
     try {
       const result = await getProducts(1, 50);
       setProducts(result.products.filter((product) => product.isActive));
-    } catch (err) {
+    } catch {
       Alert.alert("Error", "Failed to load products");
     } finally {
       setLoadingProducts(false);
@@ -115,12 +118,11 @@ export default function AdjustStockScreen() {
         reference: reference.trim() || undefined,
       });
 
-      router.replace("/stock-movements" as any);
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.message ?? "Failed to adjust stock";
+      showSuccessMessage("Stock adjustment saved successfully.");
 
-      Alert.alert("Error", message);
+      router.replace("/stock-movements" as any);
+    } catch {
+      Alert.alert("Save failed", "Unable to save this stock adjustment. Please review the details and try again.");
     } finally {
       setSaving(false);
     }
@@ -137,7 +139,7 @@ export default function AdjustStockScreen() {
       }
       scrollEventThrottle={16}
     >
-      <Text style={styles.title}>Adjust Stock</Text>
+      <Text accessibilityRole="header" style={styles.title}>Stock adjustment</Text>
       <Text style={styles.subtitle}>
         Restock products or record damaged stock.
       </Text>
@@ -147,7 +149,7 @@ export default function AdjustStockScreen() {
 
         {loadingProducts ? (
           <View style={styles.loadingBox}>
-            <ActivityIndicator />
+            <ActivityIndicator color={UI.colors.primary} />
             <Text style={styles.smallText}>Loading products...</Text>
           </View>
         ) : products.length === 0 ? (
@@ -165,6 +167,8 @@ export default function AdjustStockScreen() {
                     isSelected && styles.productCardSelected,
                   ]}
                   onPress={() => setSelectedProductId(product.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
                 >
                   <View style={styles.flexItem}>
                     <Text
@@ -204,6 +208,8 @@ export default function AdjustStockScreen() {
                   isSelected && styles.typeCardSelected,
                 ]}
                 onPress={() => setType(movement.value)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected }}
               >
                 <Text
                   style={[
@@ -230,15 +236,18 @@ export default function AdjustStockScreen() {
         <TextInput
           style={styles.input}
           placeholder="Example: 10"
+          placeholderTextColor={UI.colors.inkSubtle}
           value={quantity}
           onChangeText={setQuantity}
           keyboardType="numeric"
+          inputMode="numeric"
         />
 
         <Text style={styles.label}>Reference</Text>
         <TextInput
           style={styles.input}
           placeholder="Example: Supplier invoice no."
+          placeholderTextColor={UI.colors.inkSubtle}
           value={reference}
           onChangeText={setReference}
         />
@@ -247,6 +256,7 @@ export default function AdjustStockScreen() {
         <TextInput
           style={[styles.input, styles.textArea]}
           placeholder="Example: New stock from supplier"
+          placeholderTextColor={UI.colors.inkSubtle}
           value={note}
           onChangeText={setNote}
           multiline
@@ -266,13 +276,15 @@ export default function AdjustStockScreen() {
           style={[styles.submitButton, saving && styles.submitButtonDisabled]}
           onPress={handleSubmit}
           disabled={saving}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: saving, busy: saving }}
         >
           <Text style={styles.submitButtonText}>
             {saving ? "Saving..." : "Save Stock Adjustment"}
           </Text>
         </Pressable>
 
-        <Pressable style={styles.cancelButton} onPress={() => router.back()}>
+        <Pressable accessibilityRole="button" style={styles.cancelButton} onPress={() => router.back()}>
           <Text style={styles.cancelButtonText}>Cancel</Text>
         </Pressable>
       </View>
@@ -286,37 +298,25 @@ export default function AdjustStockScreen() {
 }
 
 const styles = StyleSheet.create({
-  screenShell: { flex: 1, backgroundColor: "#f7f7f7" },
+  screenShell: { flex: 1, backgroundColor: UI.colors.canvas },
   screen: {
     flex: 1,
-    backgroundColor: "#f7f7f7",
+    backgroundColor: UI.colors.canvas,
   },
   content: {
-    padding: 20,
-    paddingBottom: 40,
+    ...sharedStyles.formContent,
   },
   title: {
-    fontSize: 28,
-    fontWeight: "800",
-    marginBottom: 4,
+    ...sharedStyles.pageTitle,
   },
   subtitle: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 20,
+    ...sharedStyles.pageSubtitle,
   },
   formCard: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "#eee",
+    ...sharedStyles.card,
   },
   label: {
-    fontSize: 14,
-    fontWeight: "700",
-    marginBottom: 8,
-    marginTop: 14,
+    ...sharedStyles.label,
   },
   loadingBox: {
     flexDirection: "row",
@@ -326,25 +326,25 @@ const styles = StyleSheet.create({
   },
   smallText: {
     fontSize: 13,
-    color: "#666",
+    color: UI.colors.inkMuted,
   },
   emptyText: {
     fontSize: 14,
-    color: "#777",
+    color: UI.colors.inkMuted,
   },
   productList: {
     gap: 10,
   },
   productCard: {
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: UI.colors.borderStrong,
     borderRadius: 12,
     padding: 14,
-    backgroundColor: "#fff",
+    backgroundColor: UI.colors.surface,
   },
   productCardSelected: {
-    backgroundColor: "#111",
-    borderColor: "#111",
+    backgroundColor: UI.colors.ink,
+    borderColor: UI.colors.ink,
   },
   flexItem: {
     flex: 1,
@@ -356,27 +356,27 @@ const styles = StyleSheet.create({
   productInfo: {
     marginTop: 4,
     fontSize: 12,
-    color: "#666",
+    color: UI.colors.inkMuted,
   },
   selectedText: {
-    color: "#fff",
+    color: UI.colors.onDark,
   },
   selectedSubText: {
-    color: "#ddd",
+    color: UI.colors.onDarkMuted,
   },
   typeList: {
     gap: 10,
   },
   typeCard: {
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: UI.colors.borderStrong,
     borderRadius: 12,
     padding: 14,
-    backgroundColor: "#fff",
+    backgroundColor: UI.colors.surface,
   },
   typeCardSelected: {
-    backgroundColor: "#111",
-    borderColor: "#111",
+    backgroundColor: UI.colors.ink,
+    borderColor: UI.colors.ink,
   },
   typeTitle: {
     fontSize: 15,
@@ -385,16 +385,11 @@ const styles = StyleSheet.create({
   typeDescription: {
     marginTop: 4,
     fontSize: 12,
-    color: "#666",
+    color: UI.colors.inkMuted,
   },
   input: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    backgroundColor: "#fff",
+    ...sharedStyles.input,
+    ...sharedStyles.inputWeb,
   },
   textArea: {
     minHeight: 90,
@@ -404,7 +399,7 @@ const styles = StyleSheet.create({
     marginTop: 18,
     padding: 14,
     borderRadius: 12,
-    backgroundColor: "#f7f7f7",
+    backgroundColor: UI.colors.surfaceMuted,
   },
   summaryTitle: {
     fontSize: 14,
@@ -413,11 +408,13 @@ const styles = StyleSheet.create({
   },
   summaryText: {
     fontSize: 13,
-    color: "#555",
+    color: UI.colors.inkMuted,
     marginTop: 2,
   },
   submitButton: {
-    backgroundColor: "#111",
+    minHeight: UI.control.minTouchTarget,
+    justifyContent: "center",
+    backgroundColor: UI.colors.primary,
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: "center",
@@ -427,7 +424,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   submitButtonText: {
-    color: "#fff",
+    color: UI.colors.onDark,
     fontSize: 15,
     fontWeight: "800",
   },
@@ -437,7 +434,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 10,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: UI.colors.borderStrong,
+    minHeight: UI.control.minTouchTarget,
+    justifyContent: "center",
   },
   cancelButtonText: {
     fontSize: 15,

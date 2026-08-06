@@ -10,11 +10,14 @@ import {
   View,
 } from "react-native";
 import { FieldError } from "../components/FieldError";
+import { AppButton } from "../components/ui/AppButton";
 import { showSuccessMessage } from "../utils/showSuccessMessage";
 import {
   createExpense,
   ExpenseCategory,
 } from "../api/expenses";
+import { UI } from "../constants/ui";
+import { sharedStyles } from "../constants/sharedStyles";
 
 const categories: ExpenseCategory[] = [
   "PACKAGING",
@@ -93,19 +96,21 @@ export default function AddExpenseScreen() {
       showSuccessMessage("Expense added successfully.");
 
       router.replace("/expenses" as any);
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.message ?? "Failed to create expense";
-
-      Alert.alert("Error", message);
+    } catch {
+      Alert.alert("Save failed", "Unable to create this expense. Please review the details and try again.");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Add Expense</Text>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      automaticallyAdjustKeyboardInsets
+      keyboardShouldPersistTaps="handled"
+    >
+      <Text accessibilityRole="header" style={styles.title}>Expense details</Text>
       <Text style={styles.subtitle}>
         Record business expenses such as packaging, ads, and shipping.
       </Text>
@@ -115,8 +120,12 @@ export default function AddExpenseScreen() {
         <TextInput
           style={styles.input}
           placeholder="Example: Packaging Plastic"
+          placeholderTextColor={UI.colors.inkSubtle}
           value={title}
-          onChangeText={setTitle}
+          onChangeText={(value) => {
+            setTitle(value);
+            setFieldErrors((current) => ({ ...current, title: "" }));
+          }}
         />
         <FieldError message={fieldErrors.title} />
 
@@ -124,12 +133,14 @@ export default function AddExpenseScreen() {
         <TextInput
           style={styles.input}
           placeholder="Example: 25"
+          placeholderTextColor={UI.colors.inkSubtle}
           value={amount}
           onChangeText={(value) => {
             setAmount(value);
             setFieldErrors((current) => ({ ...current, amount: "" }));
           }}
-          keyboardType="numeric"
+          keyboardType="decimal-pad"
+          inputMode="decimal"
         />
         <FieldError message={fieldErrors.amount} />
 
@@ -147,6 +158,8 @@ export default function AddExpenseScreen() {
                   isSelected && styles.categoryChipSelected,
                 ]}
                 onPress={() => setCategory(item)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected }}
               >
                 <Text
                   style={[
@@ -165,24 +178,22 @@ export default function AddExpenseScreen() {
         <TextInput
           style={[styles.input, styles.textArea]}
           placeholder="Example: Plastic bags for orders"
+          placeholderTextColor={UI.colors.inkSubtle}
           value={description}
           onChangeText={setDescription}
           multiline
         />
 
-        <Pressable
-          style={[styles.submitButton, saving && styles.submitButtonDisabled]}
+        <View style={styles.actionStack}>
+        <AppButton
+          label="Create Expense"
+          loadingLabel="Saving..."
           onPress={handleSubmit}
           disabled={saving}
-        >
-          <Text style={styles.submitButtonText}>
-            {saving ? "Saving..." : "Create Expense"}
-          </Text>
-        </Pressable>
-
-        <Pressable style={styles.cancelButton} onPress={() => router.back()}>
-          <Text style={styles.cancelButtonText}>Cancel</Text>
-        </Pressable>
+          loading={saving}
+        />
+        <AppButton label="Cancel" variant="secondary" onPress={() => router.back()} />
+        </View>
       </View>
     </ScrollView>
   );
@@ -190,44 +201,26 @@ export default function AddExpenseScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    flex: 1,
-    backgroundColor: "#f7f7f7",
+    ...sharedStyles.screen,
   },
   content: {
-    padding: 20,
-    paddingBottom: 40,
+    ...sharedStyles.formContent,
   },
   title: {
-    fontSize: 28,
-    fontWeight: "800",
-    marginBottom: 4,
+    ...sharedStyles.pageTitle,
   },
   subtitle: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 20,
+    ...sharedStyles.pageSubtitle,
   },
   formCard: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "#eee",
+    ...sharedStyles.card,
   },
   label: {
-    fontSize: 14,
-    fontWeight: "700",
-    marginBottom: 8,
-    marginTop: 14,
+    ...sharedStyles.label,
   },
   input: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    backgroundColor: "#fff",
+    ...sharedStyles.input,
+    ...sharedStyles.inputWeb,
   },
   textArea: {
     minHeight: 90,
@@ -239,50 +232,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   categoryChip: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: "#fff",
+    ...sharedStyles.chip,
   },
   categoryChipSelected: {
-    backgroundColor: "#111",
-    borderColor: "#111",
+    ...sharedStyles.chipSelected,
   },
   categoryChipText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#333",
+    ...sharedStyles.chipText,
   },
   categoryChipTextSelected: {
-    color: "#fff",
+    ...sharedStyles.chipTextSelected,
   },
-  submitButton: {
-    backgroundColor: "#111",
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 24,
-  },
-  submitButtonDisabled: {
-    opacity: 0.6,
-  },
-  submitButtonText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "800",
-  },
-  cancelButton: {
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: "#ddd",
-  },
-  cancelButtonText: {
-    fontSize: 15,
-    fontWeight: "800",
-  },
+  actionStack: { gap: UI.spacing.sm, marginTop: UI.spacing.xl },
 });

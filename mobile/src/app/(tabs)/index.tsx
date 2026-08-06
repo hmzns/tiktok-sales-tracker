@@ -12,9 +12,9 @@ import { getAllOrders } from "../../api/orders";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { UI } from "../../constants/ui";
-import { useRouter } from "expo-router";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { FloatingBackToTop } from "../../components/FloatingBackToTop";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type DashboardData = {
   revenue: number;
@@ -44,8 +44,13 @@ type DashboardData = {
 };
 
 const formatRM = (value: number) => {
-  return `RM ${value.toFixed(2)}`;
+  return Number.isFinite(value) ? `RM ${value.toFixed(2)}` : "—";
 };
+
+const formatDifference = (value: number | null) =>
+  value !== null && Number.isFinite(value)
+    ? `${value >= 0 ? "↑" : "↓"} ${Math.abs(value).toFixed(1)}%`
+    : "—";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -76,9 +81,7 @@ export default function HomeScreen() {
       setDashboard(data);
       setNeedsItemsCount(
         orders.filter(
-          (order) =>
-            order.source === "TIKTOK" &&
-            order.importStatus === "NEEDS_ITEMS"
+          (order) => order.status === "NEEDS_ITEMS"
         ).length
       );
       setNetProfitDifference(
@@ -90,7 +93,7 @@ export default function HomeScreen() {
               Math.abs(previousData.netProfit)) *
             100
       );
-    } catch (err) {
+    } catch {
       setError("Failed to load dashboard");
     } finally {
       setLoading(false);
@@ -123,7 +126,7 @@ export default function HomeScreen() {
       <View style={styles.screen}>
         <ErrorState
           title="Failed to load dashboard"
-          message="Please check your backend connection and try again."
+          message="Please check your connection and try again."
           onRetry={loadDashboard}
         />
       </View>
@@ -131,7 +134,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={styles.screenShell}>
+    <SafeAreaView edges={["top"]} style={styles.screenShell}>
     <ScrollView
       ref={scrollRef}
       style={styles.screen}
@@ -146,45 +149,47 @@ export default function HomeScreen() {
     >
       <View style={styles.pageHeader}>
         <View>
-          <Text style={styles.title}>Good to see you, Sena!</Text>
+          <Text accessibilityRole="header" style={styles.title}>Dashboard</Text>
           <Text style={styles.subtitle}>
             Your business at a glance · {currentMonth}/{currentYear}
           </Text>
         </View>
       </View>
 
-      <Pressable
-        style={styles.needsItemsCard}
-        onPress={() =>
-          router.push({
-            pathname: "/orders" as any,
-            params: { filter: "needs-items" },
-          })
-        }
-      >
-        <View style={styles.flexItem}>
-          <Text style={styles.needsItemsLabel}>
-            TikTok Orders Needing Items
-          </Text>
-          <Text style={styles.needsItemsValue}>{needsItemsCount}</Text>
-        </View>
-        <Text style={styles.needsItemsArrow}>→</Text>
-      </Pressable>
+      <View style={styles.activityRow}>
+        <Pressable
+          style={styles.needsItemsCard}
+          onPress={() =>
+            router.push({
+              pathname: "/orders" as any,
+              params: { filter: "needs-items" },
+            })
+          }
+          accessibilityRole="button"
+          accessibilityLabel={`${needsItemsCount} TikTok orders need items. View orders.`}
+        >
+          <View style={styles.flexItem}>
+            <Text style={styles.needsItemsLabel}>Orders Needing Items</Text>
+            <Text style={styles.needsItemsValue}>{needsItemsCount}</Text>
+          </View>
+          <Text style={styles.needsItemsArrow}>→</Text>
+        </Pressable>
 
-      <Pressable
-        style={styles.linkButton}
-        onPress={() => router.push("/stock-movements" as any)}
-      >
-        <View>
+        <Pressable
+          style={styles.linkButton}
+          onPress={() => router.push("/stock-movements" as any)}
+          accessibilityRole="button"
+          accessibilityLabel="View stock activity"
+        >
           <Text style={styles.linkButtonText}>Stock activity</Text>
-        </View>
-        <Text style={styles.linkArrow}>→</Text>
-      </Pressable>
+          <Text style={styles.linkArrow}>→</Text>
+        </Pressable>
+      </View>
       
       <View style={styles.netProfitCard}>
         <View>
           <Text style={styles.netProfitLabel}>Net Profit</Text>
-          <Text style={[
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[
             styles.netProfitValue,
             dashboard.netProfit >= 0 ? styles.positiveNetProfit : styles.negativeNetProfit,
           ]}>
@@ -193,15 +198,13 @@ export default function HomeScreen() {
         </View>
         <View style={styles.netProfitComparisonBox}>
           <Text style={styles.netProfitComparisonLabel}>vs previous month</Text>
-          <Text style={[
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[
             styles.netProfitComparisonValue,
             (netProfitDifference ?? 0) >= 0
               ? styles.positiveNetProfit
               : styles.negativeNetProfit,
           ]}>
-            {netProfitDifference === null
-              ? "—"
-              : `${netProfitDifference >= 0 ? "↑" : "↓"} ${Math.abs(netProfitDifference).toFixed(1)}%`}
+            {formatDifference(netProfitDifference)}
           </Text>
         </View>
       </View>
@@ -209,19 +212,19 @@ export default function HomeScreen() {
       <View style={styles.metricsCard}>
         <View style={styles.metricItem}>
           <Text style={styles.cardLabel}>Revenue</Text>
-          <Text style={styles.cardValue}>{formatRM(dashboard.revenue)}</Text>
+          <Text numberOfLines={1} adjustsFontSizeToFit style={styles.cardValue}>{formatRM(dashboard.revenue)}</Text>
         </View>
 
         <View style={styles.metricItem}>
           <Text style={styles.cardLabel}>Sales Profit</Text>
-          <Text style={styles.cardValue}>
+          <Text numberOfLines={1} adjustsFontSizeToFit style={styles.cardValue}>
             {formatRM(dashboard.salesProfit)}
           </Text>
         </View>
 
         <View style={styles.metricItem}>
           <Text style={styles.cardLabel}>Expenses</Text>
-          <Text style={styles.cardValue}>
+          <Text numberOfLines={1} adjustsFontSizeToFit style={styles.cardValue}>
             {formatRM(dashboard.totalExpenses)}
           </Text>
         </View>
@@ -297,6 +300,7 @@ export default function HomeScreen() {
       <Pressable
         style={styles.guideButton}
         onPress={() => router.push("/help/iphone")}
+        accessibilityRole="button"
       >
         <Text style={styles.guideButtonText}>How to add app to iPhone</Text>
       </Pressable>
@@ -305,7 +309,7 @@ export default function HomeScreen() {
       visible={showBackToTop}
       onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
     />
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -317,9 +321,9 @@ const styles = StyleSheet.create({
   screenShell: { flex: 1, backgroundColor: UI.colors.canvas },
   content: {
     width: "100%",
-    maxWidth: 760,
+    maxWidth: UI.layout.contentMaxWidth,
     alignSelf: "center",
-    padding: 20,
+    padding: UI.layout.screenPadding,
     paddingTop: 28,
     paddingBottom: 48,
   },
@@ -346,6 +350,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   needsItemsCard: {
+    flex: 1,
+    minWidth: 280,
     minHeight: 92,
     backgroundColor: UI.colors.warningSoft,
     borderWidth: 1,
@@ -353,12 +359,17 @@ const styles = StyleSheet.create({
     borderRadius: UI.radius.large,
     paddingVertical: 16,
     paddingHorizontal: 18,
-    marginBottom: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
     ...UI.shadow,
+  },
+  activityRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginBottom: 16,
   },
   needsItemsLabel: {
     color: UI.colors.warning,
@@ -385,13 +396,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
+    flexWrap: "wrap",
     ...UI.shadow,
   },
   netProfitLabel: { color: "#D0D5DD", fontSize: 13, marginBottom: 8 },
-  netProfitValue: { fontSize: 29, fontWeight: "800" },
-  netProfitComparisonBox: { alignItems: "flex-end" },
+  netProfitValue: { fontSize: 23, fontWeight: "800", letterSpacing: -0.4 },
+  netProfitComparisonBox: { alignItems: "flex-end", flexGrow: 1, minWidth: 130 },
   netProfitComparisonLabel: { color: "#D0D5DD", fontSize: 12, marginBottom: 8 },
-  netProfitComparisonValue: { fontSize: 29, fontWeight: "800", textAlign: "right" },
+  netProfitComparisonValue: { fontSize: 23, fontWeight: "800", textAlign: "right" },
   positiveNetProfit: { color: "#6CE9A6" },
   negativeNetProfit: { color: "#FDA29B" },
   metricsCard: {
@@ -483,15 +495,16 @@ const styles = StyleSheet.create({
     color: UI.colors.danger,
   },
   linkButton: {
+    flex: 1,
+    minWidth: 280,
     backgroundColor: UI.colors.ink,
-    minHeight: 76,
+    minHeight: 92,
     paddingVertical: 14,
     paddingHorizontal: 18,
     borderRadius: UI.radius.large,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 16,
     ...UI.shadow,
   },
   linkEyebrow: {

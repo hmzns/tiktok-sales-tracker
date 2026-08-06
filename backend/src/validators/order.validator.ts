@@ -49,17 +49,9 @@ export const createOrderSchema = z.object({
     .default("MANUAL"),
 
   status: z
-    .enum([
-      "PENDING",
-      "PAID",
-      "PACKING",
-      "SHIPPED",
-      "DELIVERED",
-      "CANCELLED",
-      "REFUNDED",
-    ])
+    .enum(["NEEDS_ITEMS", "COMPLETED", "CANCELLED", "REFUNDED"])
     .optional()
-    .default("PENDING"),
+    .default("COMPLETED"),
 
   customerName: z.string().optional(),
 
@@ -87,15 +79,7 @@ export const createOrderSchema = z.object({
 });
 
 export const updateOrderStatusSchema = z.object({
-  status: z.enum([
-    "PENDING",
-    "PAID",
-    "PACKING",
-    "SHIPPED",
-    "DELIVERED",
-    "CANCELLED",
-    "REFUNDED",
-  ]),
+  status: z.enum(["NEEDS_ITEMS", "COMPLETED", "CANCELLED", "REFUNDED"]),
 });
 
 export const completeImportedOrderSchema = z

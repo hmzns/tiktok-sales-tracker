@@ -36,11 +36,8 @@ export const getOrders = async (req: Request, res: Response) => {
   const limit = req.query.limit ? Number(req.query.limit) : 10;
 
   const allowedStatuses = [
-    "PENDING",
-    "PAID",
-    "PACKING",
-    "SHIPPED",
-    "DELIVERED",
+    "NEEDS_ITEMS",
+    "COMPLETED",
     "CANCELLED",
     "REFUNDED",
   ] as const;

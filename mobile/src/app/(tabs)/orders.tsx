@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import {
   Alert,
   Keyboard,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -10,6 +11,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import {
@@ -31,10 +33,18 @@ import { getDashboardSummary } from "../../api/dashboard";
 import { FloatingBackToTop } from "../../components/FloatingBackToTop";
 import { TikTokSyncStatusCard } from "../../components/TikTokSyncStatusCard";
 import { showSuccessMessage } from "../../utils/showSuccessMessage";
+import { StatusBadge } from "../../components/ui/StatusBadge";
+import type { StatusTone } from "../../components/ui/StatusBadge";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const formatRM = (value: number) => {
-  return `RM ${value.toFixed(2)}`;
+  return Number.isFinite(value) ? `RM ${value.toFixed(2)}` : "—";
 };
+
+const formatDifference = (value: number | null) =>
+  value !== null && Number.isFinite(value)
+    ? `${value >= 0 ? "↑" : "↓"} ${Math.abs(value).toFixed(1)}%`
+    : "—";
 
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);
@@ -50,17 +60,23 @@ const formatDate = (dateString: string) => {
   });
 };
 
-const getStatusStyle = (status: string) => {
-  if (status === "PAID" || status === "DELIVERED") {
-    return styles.goodStatus;
+const getStatusTone = (status: string): StatusTone => {
+  if (status === "COMPLETED") {
+    return "success";
   }
 
   if (status === "CANCELLED" || status === "REFUNDED") {
-    return styles.badStatus;
+    return "danger";
   }
 
-  return styles.neutralStatus;
+  return "warning";
 };
+
+const formatStatusLabel = (status: string) =>
+  status
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
 type OrderListFilter = OrderStatus | "ALL" | "NEEDS_ITEMS";
 type DateFilter = "ALL" | "TODAY" | "LAST_7_DAYS" | "LAST_30_DAYS";
@@ -75,11 +91,7 @@ type OrderSort =
 const STATUS_FILTERS: OrderListFilter[] = [
   "ALL",
   "NEEDS_ITEMS",
-  "PENDING",
-  "PAID",
-  "PACKING",
-  "SHIPPED",
-  "DELIVERED",
+  "COMPLETED",
   "CANCELLED",
   "REFUNDED",
 ];
@@ -103,7 +115,7 @@ const SORT_OPTIONS: { key: OrderSort; label: string }[] = [
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 const isTikTokOrderNeedingItems = (order: SalesOrder) =>
-  order.source === "TIKTOK" && order.importStatus === "NEEDS_ITEMS";
+  order.status === "NEEDS_ITEMS";
 
 const getValidTimestamp = (value: string | null | undefined) => {
   if (!value) {
@@ -293,6 +305,8 @@ const showTikTokSyncError = (message: string) => {
 };
 
 export default function OrdersScreen() {
+  const { width, height } = useWindowDimensions();
+  const isCompactLayout = width < 600;
   const { filter } = useLocalSearchParams<{ filter?: string }>();
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -313,6 +327,7 @@ export default function OrdersScreen() {
   const [orderSort, setOrderSort] = useState<OrderSort>("recent");
   const [ageReferenceTime, setAgeReferenceTime] = useState(0);
   const [showBackToTop, setShowBackToTop] = useState(false);
+  const [showSyncStatus, setShowSyncStatus] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const syncInFlightRef = useRef(false);
   const syncHistoryHasDataRef = useRef(false);
@@ -384,6 +399,21 @@ export default function OrdersScreen() {
       void loadOrders();
     }, [loadOrders])
   );
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || !showSyncStatus) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowSyncStatus(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [showSyncStatus]);
 
   useFocusEffect(
     useCallback(() => {
@@ -500,8 +530,8 @@ export default function OrdersScreen() {
   if (loading) {
     return (
       <LoadingState
-        title="Let's see your hustle..."
-        message="Mind you, everything is from Him."
+        title="Loading orders"
+        message="Getting fulfilment status and recent sales."
       />
     );
   }
@@ -511,7 +541,7 @@ export default function OrdersScreen() {
       <View style={styles.screen}>
         <ErrorState
           title="Failed to load orders"
-          message="Please check your connection or backend API, then try again."
+          message="Please check your connection and try again."
           onRetry={loadOrders}
         />
       </View>
@@ -519,7 +549,7 @@ export default function OrdersScreen() {
   }
 
   return (
-    <View style={styles.screenShell}>
+    <SafeAreaView edges={["top"]} style={styles.screenShell}>
     <ScrollView
       ref={scrollRef}
       style={styles.screen}
@@ -533,34 +563,58 @@ export default function OrdersScreen() {
       }
     >
       <View style={styles.pageHeader}>
-        <View style={styles.flexItem}>
-          <Text style={styles.title}>Orders</Text>
+        <View
+          style={[
+            styles.headerCopy,
+            isCompactLayout && styles.compactHeaderCopy,
+          ]}
+        >
+          <Text accessibilityRole="header" style={styles.title}>Orders</Text>
           <Text style={styles.subtitle}>Manage fulfilment and customer sales</Text>
         </View>
-        <Pressable
-          style={styles.headerAddButton}
-          onPress={() => router.push("/add-order" as any)}
+        <View
+          style={[
+            styles.headerActions,
+            isCompactLayout && styles.compactHeaderActions,
+          ]}
         >
-          <Text style={styles.headerAddButtonText}>+ Add order</Text>
-        </Pressable>
+          <Pressable
+            style={[
+              styles.headerSyncStatusButton,
+              isCompactLayout && styles.compactHeaderAction,
+            ]}
+            onPress={() => setShowSyncStatus(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open TikTok sync status"
+          >
+            <Text style={styles.headerSyncStatusButtonText}>
+              Sync Status
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.headerAddButton,
+              isCompactLayout && styles.compactHeaderAction,
+            ]}
+            onPress={() => router.push("/add-order" as any)}
+            accessibilityRole="button"
+          >
+            <Text style={styles.headerAddButtonText}>+ Add order</Text>
+          </Pressable>
+        </View>
       </View>
 
       <Pressable
         style={[styles.syncButton, syncing && styles.disabledButton]}
         onPress={handleTikTokSync}
         disabled={syncing}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: syncing, busy: syncing }}
       >
         <Text style={styles.syncButtonText}>
-          {syncing ? "Syncing..." : "Sync TikTok Orders"}
+          {syncing ? "Syncing..." : "Sync Orders"}
         </Text>
       </Pressable>
-
-      <TikTokSyncStatusCard
-        data={syncHistory}
-        loading={syncHistoryLoading}
-        error={syncHistoryError}
-        onRetry={loadSyncHistory}
-      />
 
       <View style={styles.summaryCard}>
         <View>
@@ -569,13 +623,11 @@ export default function OrdersScreen() {
         </View>
         <View style={styles.comparisonBox}>
           <Text style={styles.comparisonLabel}>vs previous month</Text>
-          <Text style={[
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[
             styles.comparisonValue,
             (monthDifference ?? 0) >= 0 ? styles.positiveComparison : styles.negativeComparison,
           ]}>
-            {monthDifference === null
-              ? "—"
-              : `${monthDifference >= 0 ? "↑" : "↓"} ${Math.abs(monthDifference).toFixed(1)}%`}
+            {formatDifference(monthDifference)}
           </Text>
         </View>
       </View>
@@ -591,8 +643,9 @@ export default function OrdersScreen() {
             onChangeText={setSearch}
             onSubmitEditing={Keyboard.dismiss}
             returnKeyType="search"
+            accessibilityLabel="Search orders by order or TikTok ID"
           />
-          <Pressable style={styles.searchButton} onPress={Keyboard.dismiss}>
+          <Pressable accessibilityRole="button" style={styles.searchButton} onPress={Keyboard.dismiss}>
             <Text style={styles.searchButtonText}>Search</Text>
           </Pressable>
         </View>
@@ -612,6 +665,8 @@ export default function OrdersScreen() {
                 router.setParams({ filter: undefined });
               }
             }}
+            accessibilityRole="button"
+            accessibilityState={{ selected: activeFilter === status }}
           >
             <Text
               style={[
@@ -623,7 +678,7 @@ export default function OrdersScreen() {
                 ? "All"
                 : status === "NEEDS_ITEMS"
                   ? `Needs Items (${needsItemsCount})`
-                  : status.toLowerCase()}
+                  : formatStatusLabel(status)}
             </Text>
           </Pressable>
         ))}
@@ -643,6 +698,8 @@ export default function OrdersScreen() {
                 dateFilter === option.key && styles.activeFilterChip,
               ]}
               onPress={() => setDateFilter(option.key)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: dateFilter === option.key }}
             >
               <Text
                 style={[
@@ -670,6 +727,8 @@ export default function OrdersScreen() {
                 orderSort === option.key && styles.activeSortButton,
               ]}
               onPress={() => setOrderSort(option.key)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: orderSort === option.key }}
             >
               <Text
                 style={[
@@ -688,7 +747,7 @@ export default function OrdersScreen() {
             Showing {displayedOrders.length} of {orders.length} orders
           </Text>
           {hasActiveFilters ? (
-            <Pressable onPress={clearFilters} hitSlop={8}>
+            <Pressable accessibilityRole="button" onPress={clearFilters} hitSlop={8}>
               <Text style={styles.clearFiltersText}>Clear Filters</Text>
             </Pressable>
           ) : null}
@@ -726,7 +785,12 @@ export default function OrdersScreen() {
             >
               <View style={styles.cardHeader}>
                 <View style={styles.flexItem}>
-                  <Text style={styles.orderNumber}>
+                  <Text
+                    style={styles.orderNumber}
+                    numberOfLines={1}
+                    ellipsizeMode="middle"
+                    accessibilityLabel={`Order ID ${order.orderNumber ?? order.id}`}
+                  >
                     {order.orderNumber ?? order.id}
                   </Text>
                   <Text style={styles.customerName}>
@@ -734,38 +798,16 @@ export default function OrdersScreen() {
                   </Text>
                 </View>
 
-                <View style={styles.badgeColumn}>
-                  <Text
-                    style={[styles.statusBadge, getStatusStyle(order.status)]}
-                  >
-                    {order.status}
-                  </Text>
-
-                  {needsItems ? (
-                    <Text style={[styles.statusBadge, styles.needsItemsBadge]}>
-                      Needs Items
-                    </Text>
-                  ) : null}
-
+                <View style={styles.badgeRow}>
+                  <StatusBadge
+                    label={formatStatusLabel(order.status)}
+                    tone={getStatusTone(order.status)}
+                  />
                   {needsItemsAge ? (
-                    <Text
-                      style={[
-                        styles.statusBadge,
-                        needsItemsAge.needsAttention
-                          ? styles.attentionBadge
-                          : styles.ageBadge,
-                      ]}
-                    >
-                      {needsItemsAge.label}
-                    </Text>
-                  ) : null}
-
-                  {order.source === "TIKTOK" &&
-                  order.importStatus === "READY" &&
-                  order.stockProcessed ? (
-                    <Text style={[styles.statusBadge, styles.readyBadge]}>
-                      Ready
-                    </Text>
+                    <StatusBadge
+                      label={needsItemsAge.label}
+                      tone={needsItemsAge.needsAttention ? "danger" : "neutral"}
+                    />
                   ) : null}
                 </View>
               </View>
@@ -805,6 +847,8 @@ export default function OrdersScreen() {
                     params: { orderId: order.id },
                   })
                 }
+                accessibilityRole="button"
+                accessibilityLabel={`${needsItems ? "Complete" : "View"} order ${order.orderNumber ?? order.id}`}
               >
                 <Text style={styles.detailsButtonText}>
                   {needsItems ? "Complete Order" : "View order"}
@@ -819,7 +863,56 @@ export default function OrdersScreen() {
       visible={showBackToTop}
       onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
     />
-    </View>
+    <Modal
+      visible={showSyncStatus}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowSyncStatus(false)}
+      statusBarTranslucent
+    >
+      <View style={styles.modalOverlay}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={() => setShowSyncStatus(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Close TikTok sync status"
+        />
+        <View
+          style={[
+            styles.modalPanel,
+            { maxHeight: Math.max(320, height - 48) },
+          ]}
+          accessibilityViewIsModal
+        >
+          <View style={styles.modalHeader}>
+            <Text accessibilityRole="header" style={styles.modalTitle}>
+              Sync details
+            </Text>
+            <Pressable
+              style={styles.modalCloseButton}
+              onPress={() => setShowSyncStatus(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Close TikTok sync status"
+              hitSlop={8}
+            >
+              <Text style={styles.modalCloseText}>×</Text>
+            </Pressable>
+          </View>
+          <ScrollView
+            contentContainerStyle={styles.modalContent}
+            showsVerticalScrollIndicator
+          >
+            <TikTokSyncStatusCard
+              data={syncHistory}
+              loading={syncHistoryLoading}
+              error={syncHistoryError}
+              onRetry={loadSyncHistory}
+            />
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+    </SafeAreaView>
   );
 }
 
@@ -831,7 +924,7 @@ const styles = StyleSheet.create({
   screenShell: { flex: 1, backgroundColor: UI.colors.canvas },
   content: {
     width: "100%",
-    maxWidth: 760,
+    maxWidth: UI.layout.contentMaxWidth,
     alignSelf: "center",
     padding: 20,
     paddingTop: 28,
@@ -870,25 +963,50 @@ const styles = StyleSheet.create({
     color: UI.colors.inkMuted,
     marginTop: 4,
   },
-  pageHeader: { flexDirection: "row", alignItems: "center", gap: 16, marginBottom: 22 },
+  pageHeader: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 16, marginBottom: 22 },
+  headerCopy: { flex: 1, minWidth: 260 },
+  compactHeaderCopy: { minWidth: "100%" },
+  headerActions: {
+    flexDirection: "row",
+    flexShrink: 0,
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  compactHeaderActions: { width: "100%", flexDirection: "row" },
+  compactHeaderAction: { flex: 1, minWidth: 0 },
   eyebrow: { color: UI.colors.primary, fontSize: 11, fontWeight: "800", letterSpacing: 1.5, marginBottom: 5 },
   headerAddButton: { minHeight: 44, alignItems: "center", justifyContent: "center", backgroundColor: UI.colors.primary, borderRadius: UI.radius.small, paddingHorizontal: 16, ...UI.shadow },
   headerAddButtonText: { color: "#fff", fontSize: 13, fontWeight: "800" },
+  headerSyncStatusButton: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: UI.colors.surface,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
+    borderRadius: UI.radius.small,
+    paddingHorizontal: 14,
+  },
+  headerSyncStatusButtonText: {
+    color: UI.colors.ink,
+    fontSize: 12,
+    fontWeight: "700",
+  },
   syncButton: { minHeight: 44, alignItems: "center", justifyContent: "center", backgroundColor: UI.colors.surface, borderWidth: 1, borderColor: UI.colors.border, borderRadius: UI.radius.small, marginBottom: 16 },
   syncButtonText: { color: UI.colors.ink, fontSize: 12, fontWeight: "700" },
   disabledButton: { opacity: 0.6 },
-  summaryCard: { minHeight: 104, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, borderRadius: UI.radius.large, padding: 20, marginBottom: 16, backgroundColor: UI.colors.ink, ...UI.shadow },
+  summaryCard: { minHeight: 104, flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12, borderRadius: UI.radius.large, padding: 20, marginBottom: 16, backgroundColor: UI.colors.ink, ...UI.shadow },
   summaryLabel: { color: "#D0D5DD", fontSize: 13, marginBottom: 7 },
   summaryValue: { color: "#fff", fontSize: 30, fontWeight: "800" },
-  comparisonBox: { alignItems: "flex-end" },
+  comparisonBox: { alignItems: "flex-end", flexGrow: 1, minWidth: 130 },
   comparisonLabel: { color: "#D0D5DD", fontSize: 12, marginBottom: 7 },
   comparisonValue: { fontSize: 30, fontWeight: "800", textAlign: "right" },
   positiveComparison: { color: "#6CE9A6" },
   negativeComparison: { color: "#FDA29B" },
-  toolsCard: { backgroundColor: UI.colors.surface, borderRadius: UI.radius.large, padding: 14, borderWidth: 1, borderColor: UI.colors.border, marginBottom: 16, ...UI.shadow },
+  toolsCard: { backgroundColor: UI.colors.surface, borderRadius: UI.radius.large, padding: 12, borderWidth: 1, borderColor: UI.colors.border, marginBottom: 16, ...UI.shadow },
   searchRow: { minHeight: 50, flexDirection: "row", alignItems: "center", backgroundColor: UI.colors.surfaceMuted, borderWidth: 1, borderColor: UI.colors.border, borderRadius: UI.radius.medium, paddingLeft: 14 },
   searchGlyph: { color: UI.colors.inkMuted, fontSize: 22, marginRight: 8 },
-  filterLabel: { color: UI.colors.inkMuted, fontSize: 10, fontWeight: "800", letterSpacing: 1, marginTop: 16, marginBottom: 9 },
+  filterLabel: { color: UI.colors.inkMuted, fontSize: 10, fontWeight: "800", letterSpacing: 1, marginTop: 12, marginBottom: 7 },
   resultsRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -938,11 +1056,13 @@ const styles = StyleSheet.create({
   },
   flexItem: {
     flex: 1,
+    minWidth: 0,
   },
   orderNumber: {
     color: UI.colors.ink,
     fontSize: 16,
     fontWeight: "700",
+    flexShrink: 1,
   },
   customerName: {
     marginTop: 4,
@@ -958,8 +1078,12 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignSelf: "flex-start",
   },
-  badgeColumn: {
-    alignItems: "flex-end",
+  badgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    flexShrink: 1,
     gap: 6,
   },
   needsItemsBadge: {
@@ -1122,7 +1246,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   filterScroll: {
-    marginBottom: 10,
+    marginBottom: 6,
   },
   sortScroll: { marginBottom: 2 },
   sortButton: { minHeight: 38, alignItems: "center", justifyContent: "center", backgroundColor: UI.colors.surfaceMuted, borderWidth: 1, borderColor: UI.colors.border, borderRadius: UI.radius.small, paddingHorizontal: 12, marginRight: 7 },
@@ -1130,13 +1254,16 @@ const styles = StyleSheet.create({
   sortButtonText: { color: UI.colors.inkMuted, fontSize: 10, fontWeight: "700", textAlign: "center" },
   activeSortButtonText: { color: "#fff" },
   filterChip: {
+    minHeight: UI.control.minTouchTarget,
     backgroundColor: UI.colors.surface,
     borderWidth: 1,
     borderColor: UI.colors.border,
     borderRadius: 999,
     paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginRight: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 13,
+    marginRight: 7,
   },
   activeFilterChip: {
     backgroundColor: UI.colors.primarySoft,
@@ -1151,6 +1278,7 @@ const styles = StyleSheet.create({
     color: UI.colors.primary,
   },
   detailsButton: {
+    minHeight: UI.control.minTouchTarget,
     justifyContent: "center",
     backgroundColor: "rgba(16, 24, 40, 1.00)",
     borderWidth: 1,
@@ -1169,5 +1297,50 @@ const styles = StyleSheet.create({
     backgroundColor: UI.colors.warning,
     borderColor: UI.colors.warning,
   },
+  modalOverlay: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#10182899",
+    padding: 16,
+  },
+  modalPanel: {
+    width: "100%",
+    maxWidth: 580,
+    overflow: "hidden",
+    backgroundColor: UI.colors.surface,
+    borderRadius: UI.radius.large,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
+    ...UI.shadow,
+  },
+  modalHeader: {
+    minHeight: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingLeft: 18,
+    paddingRight: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: UI.colors.border,
+  },
+  modalTitle: {
+    color: UI.colors.ink,
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  modalCloseButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: UI.radius.pill,
+  },
+  modalCloseText: {
+    color: UI.colors.ink,
+    fontSize: 28,
+    lineHeight: 30,
+  },
+  modalContent: { padding: 16, paddingBottom: 4 },
   detailsArrow: { color: UI.colors.primary, fontSize: 17, fontWeight: "700" },
 });

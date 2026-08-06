@@ -7,7 +7,7 @@ import {
   getSalesTrendsReport,
 } from "../src/services/report.service";
 
-test("dashboard and monthly report query only READY sales orders", async () => {
+test("dashboard and monthly report query only completed sales orders", async () => {
   const originalSalesOrderFindMany = prisma.salesOrder.findMany;
   const originalExpenseFindMany = prisma.expense.findMany;
   const originalProductFindMany = prisma.product.findMany;
@@ -43,8 +43,8 @@ test("dashboard and monthly report query only READY sales orders", async () => {
 
     for (const query of salesOrderQueries) {
       assert.equal(
-        (query as { where: { importStatus: string } }).where.importStatus,
-        "READY"
+        (query as { where: { status: string } }).where.status,
+        "COMPLETED"
       );
     }
   } finally {
@@ -78,7 +78,7 @@ test("monthly product performance uses stored item prices and distinct orders", 
       id: "order-1",
       orderNumber: "ORD-1",
       platform: "MANUAL",
-      status: "DELIVERED",
+      status: "COMPLETED",
       customerName: null,
       createdAt: new Date(2026, 6, 5),
       subtotal: 52,
@@ -127,7 +127,7 @@ test("monthly product performance uses stored item prices and distinct orders", 
       id: "order-2",
       orderNumber: "ORD-2",
       platform: "TIKTOK_SHOP",
-      status: "PAID",
+      status: "COMPLETED",
       customerName: null,
       createdAt: new Date(2026, 6, 8),
       subtotal: 27,
@@ -197,11 +197,10 @@ test("monthly product performance uses stored item prices and distinct orders", 
     );
 
     const query = reportQuery as {
-      where: { importStatus: string; status: { notIn: string[] } };
+      where: { status: string };
       select: Record<string, unknown>;
     };
-    assert.equal(query.where.importStatus, "READY");
-    assert.deepEqual(query.where.status.notIn, ["CANCELLED", "REFUNDED"]);
+    assert.equal(query.where.status, "COMPLETED");
     assert.equal("rawImportData" in query.select, false);
   } finally {
     prisma.salesOrder.findMany = originalSalesOrderFindMany;
@@ -218,7 +217,7 @@ test("historical items without allocation and without discount keep gross revenu
       id: "legacy-order",
       orderNumber: "LEGACY-1",
       platform: "MANUAL",
-      status: "PAID",
+      status: "COMPLETED",
       customerName: null,
       createdAt: new Date(2026, 6, 10),
       subtotal: 20,
@@ -374,17 +373,12 @@ test("sales trends allocate discounts, use historical cost, and include zero day
 
     const salesQuery = orderQuery as {
       where: {
-        importStatus: string;
-        status: { notIn: string[] };
+        status: string;
         items: { some: Record<string, never> };
       };
       select: Record<string, unknown>;
     };
-    assert.equal(salesQuery.where.importStatus, "READY");
-    assert.deepEqual(salesQuery.where.status.notIn, [
-      "CANCELLED",
-      "REFUNDED",
-    ]);
+    assert.equal(salesQuery.where.status, "COMPLETED");
     assert.deepEqual(salesQuery.where.items, { some: {} });
     assert.equal("customerName" in salesQuery.select, false);
     assert.equal("rawImportData" in salesQuery.select, false);

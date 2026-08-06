@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import {
@@ -22,12 +23,16 @@ import { apiClient } from "../../api/client";
 import { router, useFocusEffect } from "expo-router";
 import { UI } from "../../constants/ui";
 import { FloatingBackToTop } from "../../components/FloatingBackToTop";
+import { StatusBadge } from "../../components/ui/StatusBadge";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const formatRM = (value: number) => {
-  return `RM ${value.toFixed(2)}`;
+  return Number.isFinite(value) ? `RM ${value.toFixed(2)}` : "—";
 };
 
 export default function ProductsScreen() {
+  const { width } = useWindowDimensions();
+  const isCompactLayout = width < 600;
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -54,7 +59,7 @@ export default function ProductsScreen() {
       ]);
       setProducts(result.products);
       setTotal(allProducts.meta.total);
-    } catch (error) {
+    } catch {
       setError("Failed to load products");
     } finally {
       setLoading(false);
@@ -81,8 +86,8 @@ export default function ProductsScreen() {
   if (loading) {
     return (
       <LoadingState
-        title="Almost there..."
-        message="Sabar is separuh daripada iman."
+        title="Loading products"
+        message="Getting current pricing, availability, and stock levels."
       />
     );
   }
@@ -92,7 +97,7 @@ export default function ProductsScreen() {
       <View style={styles.screen}>
         <ErrorState
           title="Failed to load products"
-          message="Please check your connection or backend API, then try again."
+          message="Please check your connection and try again."
           onRetry={loadProducts}
         />
       </View>
@@ -172,13 +177,13 @@ export default function ProductsScreen() {
       document.body.removeChild(link);
 
       URL.revokeObjectURL(url);
-    } catch (error) {
+    } catch {
       Alert.alert("Export failed", "Unable to export products.");
     }
   };
 
   return (
-    <View style={styles.screenShell}>
+    <SafeAreaView edges={["top"]} style={styles.screenShell}>
     <ScrollView
       ref={scrollRef}
       style={styles.screen}
@@ -192,15 +197,15 @@ export default function ProductsScreen() {
       }
     >
       <View style={styles.pageHeader}>
-        <View style={styles.flexItem}>
-          <Text style={styles.title}>Products</Text>
+        <View style={[styles.headerCopy, isCompactLayout && styles.compactHeaderCopy]}>
+          <Text accessibilityRole="header" style={styles.title}>Products</Text>
           <Text style={styles.subtitle}>Manage pricing, stock, and availability</Text>
         </View>
-        <View style={styles.headerActions}>
-          <Pressable style={styles.headerExportButton} onPress={handleExportProductsCsv}>
+        <View style={[styles.headerActions, isCompactLayout && styles.compactHeaderActions]}>
+          <Pressable accessibilityRole="button" style={[styles.headerExportButton, isCompactLayout && styles.compactHeaderAction]} onPress={handleExportProductsCsv}>
             <Text style={styles.headerExportButtonText}>Export</Text>
           </Pressable>
-          <Pressable style={styles.headerAddButton} onPress={() => router.push("/add-product")}>
+          <Pressable accessibilityRole="button" style={[styles.headerAddButton, isCompactLayout && styles.compactHeaderAction]} onPress={() => router.push("/add-product")}>
             <Text style={styles.headerAddButtonText}>+ Add product</Text>
           </Pressable>
         </View>
@@ -209,6 +214,7 @@ export default function ProductsScreen() {
       <Pressable
         style={styles.manageCategoriesButton}
         onPress={() => router.push("/product-categories" as any)}
+        accessibilityRole="button"
       >
         <Text style={styles.manageCategoriesButtonText}>Manage categories</Text>
       </Pressable>
@@ -229,8 +235,9 @@ export default function ProductsScreen() {
             onChangeText={setSearch}
             onSubmitEditing={loadProducts}
             returnKeyType="search"
+            accessibilityLabel="Search products by name or SKU"
           />
-          <Pressable style={styles.searchButton} onPress={loadProducts}>
+          <Pressable accessibilityRole="button" style={styles.searchButton} onPress={loadProducts}>
             <Text style={styles.searchButtonText}>Search</Text>
           </Pressable>
         </View>
@@ -238,6 +245,8 @@ export default function ProductsScreen() {
           <Pressable
             style={[styles.lowStockButton, showLowStockOnly && styles.activeLowStockButton]}
             onPress={() => setShowLowStockOnly((current) => !current)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: showLowStockOnly }}
           >
             <Text style={[styles.lowStockButtonText, showLowStockOnly && styles.activeLowStockButtonText]}>
               {showLowStockOnly ? "Show all products" : "Show low stock"}
@@ -255,6 +264,8 @@ export default function ProductsScreen() {
         <EmptyState
           title="No products yet"
           message="Add your first product to start tracking stock and sales."
+          actionLabel="Add product"
+          onAction={() => router.push("/add-product")}
         />
       ) : (
         products.map((product) => {
@@ -262,7 +273,7 @@ export default function ProductsScreen() {
           const isLowStock = product.stock <= 5;
 
           return (
-            <View key={product.id} style={styles.card}>
+            <View key={product.id} style={[styles.card, !product.isActive && styles.inactiveCard]}>
               <View style={styles.cardHeader}>
                 <View style={styles.flexItem}>
                   <Text style={styles.productName}>{product.name}</Text>
@@ -307,13 +318,10 @@ export default function ProductsScreen() {
 
               <View style={styles.infoRow}>
                 <Text style={styles.label}>Status</Text>
-                <Text
-                  style={
-                    product.isActive ? styles.activeStatus : styles.inactiveStatus
-                  }
-                >
-                  {product.isActive ? "Active" : "Inactive"}
-                </Text>
+                <StatusBadge
+                  label={product.isActive ? "Active" : "Inactive"}
+                  tone={product.isActive ? "success" : "neutral"}
+                />
               </View>
 
               {isLowStock && (
@@ -328,6 +336,8 @@ export default function ProductsScreen() {
                     params: { productId: product.id },
                   })
                 }
+                accessibilityRole="button"
+                accessibilityLabel={`Edit ${product.name}`}
               >
                 <Text style={styles.editButtonText}>Edit product</Text>
               </Pressable>
@@ -340,7 +350,7 @@ export default function ProductsScreen() {
       visible={showBackToTop}
       onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
     />
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -352,7 +362,7 @@ const styles = StyleSheet.create({
   screenShell: { flex: 1, backgroundColor: UI.colors.canvas },
   content: {
     width: "100%",
-    maxWidth: 760,
+    maxWidth: UI.layout.contentMaxWidth,
     alignSelf: "center",
     padding: 20,
     paddingTop: 28,
@@ -391,9 +401,13 @@ const styles = StyleSheet.create({
     color: UI.colors.inkMuted,
     marginTop: 4,
   },
-  pageHeader: { flexDirection: "row", alignItems: "center", gap: 16, marginBottom: 22 },
+  pageHeader: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 16, marginBottom: 22 },
   eyebrow: { color: UI.colors.primary, fontSize: 11, fontWeight: "800", letterSpacing: 1.5, marginBottom: 5 },
-  headerActions: { flexDirection: "row", gap: 8 },
+  headerCopy: { flex: 1, minWidth: 260 },
+  compactHeaderCopy: { minWidth: "100%" },
+  headerActions: { flexDirection: "row", flexShrink: 0, justifyContent: "flex-end", gap: 8 },
+  compactHeaderActions: { width: "100%", flexDirection: "row" },
+  compactHeaderAction: { flex: 1, minWidth: 0 },
   headerExportButton: { minHeight: 44, alignItems: "center", justifyContent: "center", backgroundColor: UI.colors.surface, borderWidth: 1, borderColor: UI.colors.border, borderRadius: UI.radius.small, paddingHorizontal: 13 },
   headerExportButtonText: { color: UI.colors.ink, fontSize: 12, fontWeight: "700" },
   manageCategoriesButton: { minHeight: 42, alignItems: "center", justifyContent: "center", backgroundColor: UI.colors.surface, borderWidth: 1, borderColor: UI.colors.border, borderRadius: UI.radius.small, marginBottom: 16 },
@@ -404,9 +418,9 @@ const styles = StyleSheet.create({
   secondaryActionText: { color: UI.colors.ink, fontSize: 12, fontWeight: "700" },
   primaryAction: { flex: 1.25, minHeight: 44, alignItems: "center", justifyContent: "center", backgroundColor: UI.colors.primary, borderRadius: UI.radius.small },
   primaryActionText: { color: "#fff", fontSize: 12, fontWeight: "800" },
-  summaryCard: { minHeight: 104, borderRadius: UI.radius.large, padding: 20, marginBottom: 16, backgroundColor: UI.colors.ink, ...UI.shadow },
-  summaryLabel: { color: "#D0D5DD", fontSize: 13, marginBottom: 7 },
-  summaryValue: { color: "#fff", fontSize: 30, fontWeight: "800" },
+  summaryCard: { minHeight: 104, alignItems: "center", justifyContent: "center", borderRadius: UI.radius.large, padding: 20, marginBottom: 16, backgroundColor: UI.colors.ink, ...UI.shadow },
+  summaryLabel: { color: "#D0D5DD", fontSize: 13, marginBottom: 7, textAlign: "center" },
+  summaryValue: { color: "#fff", fontSize: 30, fontWeight: "800", textAlign: "center" },
   toolsCard: { backgroundColor: UI.colors.surface, borderRadius: UI.radius.large, padding: 14, borderWidth: 1, borderColor: UI.colors.border, marginBottom: 16, ...UI.shadow },
   searchRow: { minHeight: 50, flexDirection: "row", alignItems: "center", backgroundColor: UI.colors.surfaceMuted, borderWidth: 1, borderColor: UI.colors.border, borderRadius: UI.radius.medium, paddingLeft: 14 },
   searchGlyph: { color: UI.colors.inkMuted, fontSize: 22, marginRight: 8 },
@@ -425,13 +439,15 @@ const styles = StyleSheet.create({
     color: "#777",
   },
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
+    backgroundColor: UI.colors.surface,
+    borderRadius: UI.radius.large,
     padding: 18,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: UI.colors.border,
+    ...UI.shadowSubtle,
   },
+  inactiveCard: { opacity: 0.72, backgroundColor: UI.colors.surfaceMuted },
   cardHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -493,16 +509,6 @@ const styles = StyleSheet.create({
     textAlign: "right",
     flex: 1,
   },
-  activeStatus: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: UI.colors.success,
-  },
-  inactiveStatus: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: UI.colors.danger,
-  },
   warningText: {
     marginTop: 12,
     fontSize: 13,
@@ -541,10 +547,11 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   editButton: {
+    minHeight: UI.control.minTouchTarget,
     justifyContent: "center",
-    backgroundColor: "rgba(16, 24, 40, 1.00)",
+    backgroundColor: UI.colors.ink,
     borderWidth: 1,
-    borderColor: "rgba(16, 24, 40, 1.00)",
+    borderColor: UI.colors.ink,
     borderRadius: 10,
     padding: 12,
     alignItems: "center",

@@ -20,14 +20,11 @@ export type OrderItem = {
 
 export type OrderSource = "MANUAL" | "TIKTOK";
 
-export type ImportStatus = "NEEDS_ITEMS" | "READY" | "IMPORT_FAILED";
-
 export type SalesOrder = {
   id: string;
   orderNumber: string | null;
   tiktokOrderId: string | null;
   source: OrderSource;
-  importStatus: ImportStatus;
   stockProcessed: boolean;
   importedAt: string | null;
   platform: string;
@@ -112,7 +109,7 @@ export type TikTokSyncHistory = TikTokSyncHistoryResponse["data"];
 export type CreateOrderInput = {
   orderNumber?: string;
   platform?: "MANUAL" | "TIKTOK_SHOP" | "SHOPEE" | "LAZADA";
-  status?: "PENDING" | "PAID" | "PACKING" | "SHIPPED" | "DELIVERED";
+  status?: OrderStatus;
   customerName?: string;
   discount?: OrderDiscountInput;
   shippingFee?: number;
@@ -124,11 +121,8 @@ export type CreateOrderInput = {
 };
 
 export type OrderStatus =
-  | "PENDING"
-  | "PAID"
-  | "PACKING"
-  | "SHIPPED"
-  | "DELIVERED"
+  | "NEEDS_ITEMS"
+  | "COMPLETED"
   | "CANCELLED"
   | "REFUNDED";
 
