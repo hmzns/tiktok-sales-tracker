@@ -62,6 +62,18 @@ enum TikTokSyncStatus {
   FAILED
 }
 
+enum TikTokPaymentMode {
+  FULL_TIKTOK
+  EXTERNAL_PRODUCT_PAYMENT
+}
+
+enum TikTokFinanceStatus {
+  PENDING
+  SETTLED
+  UNAVAILABLE
+  ERROR
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -89,13 +101,24 @@ model Product {
 }
 
 model SalesOrder {
-  id             String       @id @default(cuid())
-  orderNumber    String?      @unique
-  tiktokOrderId  String?      @unique
-  source         OrderSource  @default(MANUAL)
+  id             String      @id @default(cuid())
+  orderNumber    String?     @unique
+  tiktokOrderId  String?     @unique
+  source         OrderSource @default(MANUAL)
   importedAt     DateTime?
   rawImportData  Json?
-  stockProcessed Boolean      @default(false)
+  stockProcessed Boolean     @default(false)
+
+  tiktokPaymentMode TikTokPaymentMode?
+  buyerShippingFee  Decimal?           @db.Decimal(18, 2)
+
+  financeStatus            TikTokFinanceStatus?
+  financeCurrency          String?
+  tiktokRevenueAmount      Decimal?             @db.Decimal(18, 2)
+  tiktokShippingCostAmount Decimal?             @db.Decimal(18, 2)
+  tiktokFeeAndTaxAmount    Decimal?             @db.Decimal(18, 2)
+  tiktokSettlementAmount   Decimal?             @db.Decimal(18, 2)
+  financeSyncedAt          DateTime?
 
   platform SalesPlatform    @default(MANUAL)
   status   SalesOrderStatus @default(COMPLETED)
@@ -110,7 +133,7 @@ model SalesOrder {
   total         Float
 
   totalCost Float
-  profit    Float
+  profit    Float?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

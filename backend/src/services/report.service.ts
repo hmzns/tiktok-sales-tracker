@@ -12,6 +12,7 @@ import {
   getMonthRange,
   parseBusinessDate,
 } from "../utils/reportDates";
+import { getRecognizedOrderFinancials } from "../utils/tiktokAccounting";
 
 type MonthlyReportFilter = {
   year?: number;
@@ -90,6 +91,7 @@ export const getMonthlySalesReport = async (
     select: {
       id: true,
       orderNumber: true,
+      source: true,
       platform: true,
       status: true,
       customerName: true,
@@ -100,6 +102,9 @@ export const getMonthlySalesReport = async (
       total: true,
       totalCost: true,
       profit: true,
+      tiktokPaymentMode: true,
+      financeStatus: true,
+      tiktokSettlementAmount: true,
       items: {
         select: {
           productId: true,
@@ -139,9 +144,38 @@ export const getMonthlySalesReport = async (
     },
   });
 
-  const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
-  const totalCost = orders.reduce((sum, order) => sum + order.totalCost, 0);
-  const salesProfit = orders.reduce((sum, order) => sum + order.profit, 0);
+  const accountingByOrderId = new Map(
+    orders.map((order) => [
+      order.id,
+      getRecognizedOrderFinancials({
+        source: order.source,
+        paymentMode: order.tiktokPaymentMode,
+        financeStatus: order.financeStatus,
+        settlementAmount: order.tiktokSettlementAmount,
+        subtotal: order.subtotal,
+        discount: order.discount,
+        total: order.total,
+        totalCost: order.totalCost,
+        profit: order.profit,
+        items: order.items,
+      }),
+    ])
+  );
+  const recognizedAccounting = Array.from(accountingByOrderId.values()).filter(
+    (financials) => !financials.pending
+  );
+  const totalRevenue = recognizedAccounting.reduce(
+    (sum, financials) => sum + (financials.revenue ?? 0),
+    0
+  );
+  const totalCost = recognizedAccounting.reduce(
+    (sum, financials) => sum + (financials.cost ?? 0),
+    0
+  );
+  const salesProfit = recognizedAccounting.reduce(
+    (sum, financials) => sum + (financials.profit ?? 0),
+    0
+  );
   const totalExpenses = expenses.reduce(
     (sum, expense) => sum + expense.amount,
     0
@@ -149,6 +183,9 @@ export const getMonthlySalesReport = async (
   const netProfit = salesProfit - totalExpenses;
 
   const totalOrders = orders.length;
+  const pendingFinanceOrderCount = Array.from(
+    accountingByOrderId.values()
+  ).filter((financials) => financials.pending).length;
 
   const totalItemsSold = orders.reduce((sum, order) => {
     return (
@@ -158,34 +195,41 @@ export const getMonthlySalesReport = async (
   }, 0);
 
   const averageOrderValue =
-    totalOrders > 0 ? totalRevenue / totalOrders : 0;
+    recognizedAccounting.length > 0
+      ? totalRevenue / recognizedAccounting.length
+      : 0;
 
-  const orderRows = orders.map((order) => ({
-    orderId: order.id,
-    orderNumber: order.orderNumber,
-    platform: order.platform,
-    status: order.status,
-    customerName: order.customerName,
-    date: order.createdAt,
-    subtotal: order.subtotal,
-    discount: order.discount,
-    shippingFee: order.shippingFee,
-    total: order.total,
-    totalCost: order.totalCost,
-    profit: order.profit,
-    items: order.items.map((item) => ({
-      productId: item.productId,
-      productName: item.product.name,
-      sku: item.product.sku,
-      category: item.product.category?.name ?? null,
-      quantity: item.quantity,
-      sellPrice: item.sellPrice,
-      costPrice: item.costPrice,
-      lineTotal: item.lineTotal,
-      lineCost: item.lineCost,
-      lineProfit: item.lineProfit,
-    })),
-  }));
+  const orderRows = orders.map((order) => {
+    const accounting = accountingByOrderId.get(order.id);
+
+    return {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      platform: order.platform,
+      status: order.status,
+      customerName: order.customerName,
+      date: order.createdAt,
+      subtotal: order.subtotal,
+      discount: order.discount,
+      shippingFee: order.shippingFee,
+      total: accounting?.revenue ?? null,
+      totalCost: accounting?.cost ?? null,
+      profit: accounting?.profit ?? null,
+      financePending: accounting?.pending ?? false,
+      items: order.items.map((item) => ({
+        productId: item.productId,
+        productName: item.product.name,
+        sku: item.product.sku,
+        category: item.product.category?.name ?? null,
+        quantity: item.quantity,
+        sellPrice: item.sellPrice,
+        costPrice: item.costPrice,
+        lineTotal: item.lineTotal,
+        lineCost: item.lineCost,
+        lineProfit: item.lineProfit,
+      })),
+    };
+  });
 
   // Collapse snapshot line-item values into one performance row per product.
   // OrderItem prices and costs are captured at sale time, so later Product
@@ -203,18 +247,29 @@ export const getMonthlySalesReport = async (
       discountCents: number;
       productCostCents: number;
       orderIds: Set<string>;
+      financeExcludedOrderIds: Set<string>;
+      financeExcludedUnits: number;
     }
   >();
 
   for (const order of orders) {
     const itemFinancials = getOrderItemFinancials(order.items, order.discount);
+    const excludeFullTikTokFinancials =
+      order.source === "TIKTOK" &&
+      order.tiktokPaymentMode === "FULL_TIKTOK";
 
     for (const [itemIndex, item] of order.items.entries()) {
       const existing = productMap.get(item.productId);
       const itemGrossRevenueCents =
-        itemFinancials[itemIndex].grossRevenueCents;
-      const itemDiscountCents = itemFinancials[itemIndex].discountCents;
-      const itemCostCents = itemFinancials[itemIndex].productCostCents;
+        excludeFullTikTokFinancials
+          ? 0
+          : itemFinancials[itemIndex].grossRevenueCents;
+      const itemDiscountCents = excludeFullTikTokFinancials
+        ? 0
+        : itemFinancials[itemIndex].discountCents;
+      const itemCostCents = excludeFullTikTokFinancials
+        ? 0
+        : itemFinancials[itemIndex].productCostCents;
 
       if (existing) {
         existing.unitsSold += item.quantity;
@@ -222,6 +277,10 @@ export const getMonthlySalesReport = async (
         existing.discountCents += itemDiscountCents;
         existing.productCostCents += itemCostCents;
         existing.orderIds.add(order.id);
+        if (excludeFullTikTokFinancials) {
+          existing.financeExcludedOrderIds.add(order.id);
+          existing.financeExcludedUnits += item.quantity;
+        }
       } else {
         productMap.set(item.productId, {
           productId: item.productId,
@@ -234,6 +293,12 @@ export const getMonthlySalesReport = async (
           discountCents: itemDiscountCents,
           productCostCents: itemCostCents,
           orderIds: new Set([order.id]),
+          financeExcludedOrderIds: new Set(
+            excludeFullTikTokFinancials ? [order.id] : []
+          ),
+          financeExcludedUnits: excludeFullTikTokFinancials
+            ? item.quantity
+            : 0,
         });
       }
     }
@@ -254,6 +319,8 @@ export const getMonthlySalesReport = async (
         isActive: product.isActive,
         unitsSold: product.unitsSold,
         orderCount: product.orderIds.size,
+        financeExcludedOrderCount: product.financeExcludedOrderIds.size,
+        financeExcludedUnits: product.financeExcludedUnits,
         grossRevenue: fromMoneyCents(product.grossRevenueCents),
         discountAmount: fromMoneyCents(product.discountCents),
         netRevenue,
@@ -288,6 +355,8 @@ export const getMonthlySalesReport = async (
       productMap.get(product.productId)?.productCostCents ?? 0
     ),
     profit: product.grossProfit,
+    financeExcludedOrderCount: product.financeExcludedOrderCount,
+    financeExcludedUnits: product.financeExcludedUnits,
   }));
 
   const productPerformanceSummary = productPerformanceRows.reduce(
@@ -305,6 +374,7 @@ export const getMonthlySalesReport = async (
       summary.grossProfit = roundMoney(
         summary.grossProfit + product.grossProfit
       );
+      summary.financeExcludedUnits += product.financeExcludedUnits;
       return summary;
     },
     {
@@ -314,8 +384,14 @@ export const getMonthlySalesReport = async (
       discountAmount: 0,
       netRevenue: 0,
       grossProfit: 0,
+      financeExcludedUnits: 0,
     }
   );
+  const financeExcludedOrderCount = orders.filter(
+    (order) =>
+      order.source === "TIKTOK" &&
+      order.tiktokPaymentMode === "FULL_TIKTOK"
+  ).length;
 
   const bestSellingProduct = productPerformanceRows[0] ?? null;
   const highestRevenueProduct =
@@ -377,12 +453,19 @@ export const getMonthlySalesReport = async (
       totalOrders,
       totalItemsSold,
       averageOrderValue,
+      pendingFinanceOrderCount,
+      financiallyRecognizedOrderCount: recognizedAccounting.length,
     },
     orderRows,
     productSummary,
     productPerformance: {
       profitAccuracy: "HISTORICAL_ORDER_ITEM_COST" as const,
-      summary: productPerformanceSummary,
+      financeAllocation:
+        "FULL_TIKTOK_ORDER_FINANCE_EXCLUDED_FROM_PRODUCT_METRICS" as const,
+      summary: {
+        ...productPerformanceSummary,
+        financeExcludedOrderCount,
+      },
       highlights: {
         bestSellingProduct: bestSellingProduct
           ? {
@@ -421,6 +504,7 @@ type DailyTrendAccumulator = {
   discountCents: number;
   productCostCents: number;
   expenseCents: number;
+  pendingFinanceOrderCount: number;
 };
 
 export const getSalesTrendsReport = async (filter: SalesTrendsFilter) => {
@@ -449,7 +533,15 @@ export const getSalesTrendsReport = async (filter: SalesTrendsFilter) => {
       },
       select: {
         createdAt: true,
+        source: true,
+        tiktokPaymentMode: true,
+        financeStatus: true,
+        tiktokSettlementAmount: true,
+        subtotal: true,
         discount: true,
+        total: true,
+        totalCost: true,
+        profit: true,
         items: {
           select: {
             quantity: true,
@@ -493,6 +585,7 @@ export const getSalesTrendsReport = async (filter: SalesTrendsFilter) => {
       discountCents: 0,
       productCostCents: 0,
       expenseCents: 0,
+      pendingFinanceOrderCount: 0,
     });
   }
 
@@ -507,16 +600,51 @@ export const getSalesTrendsReport = async (filter: SalesTrendsFilter) => {
       continue;
     }
 
-    const itemFinancials = getOrderItemFinancials(order.items, order.discount);
     daily.orderCount += 1;
+    daily.unitsSold += order.items.reduce(
+      (sum, item) => sum + item.quantity,
+      0
+    );
+
+    if (
+      order.source === "TIKTOK" &&
+      order.tiktokPaymentMode === "FULL_TIKTOK"
+    ) {
+      const accounting = getRecognizedOrderFinancials({
+        source: order.source,
+        paymentMode: order.tiktokPaymentMode,
+        financeStatus: order.financeStatus,
+        settlementAmount: order.tiktokSettlementAmount,
+        subtotal: order.subtotal,
+        discount: order.discount,
+        total: order.total,
+        totalCost: order.totalCost,
+        profit: order.profit,
+        items: order.items,
+      });
+
+      if (accounting.pending) {
+        daily.pendingFinanceOrderCount += 1;
+        continue;
+      }
+
+      daily.grossRevenueCents += toMoneyCents(accounting.revenue ?? 0);
+      daily.productCostCents += toMoneyCents(accounting.cost ?? 0);
+      continue;
+    }
+
+    const itemFinancials = getOrderItemFinancials(order.items, order.discount);
 
     for (const [index, item] of order.items.entries()) {
       const financials = itemFinancials[index];
-      daily.unitsSold += item.quantity;
       daily.grossRevenueCents += financials.grossRevenueCents;
       daily.discountCents += financials.discountCents;
       daily.productCostCents += financials.productCostCents;
     }
+
+    // Keep Sales Trends on its existing tracker-product basis for external
+    // product payments. TikTok settlement integration here is intentionally
+    // deferred until real Seller Center settlements have been reconciled.
   }
 
   for (const expense of expenses) {
@@ -544,6 +672,7 @@ export const getSalesTrendsReport = async (filter: SalesTrendsFilter) => {
       grossProfit: fromMoneyCents(grossProfitCents),
       expenses: fromMoneyCents(daily.expenseCents),
       netProfit: fromMoneyCents(netProfitCents),
+      pendingFinanceOrderCount: daily.pendingFinanceOrderCount,
     };
   });
 
@@ -555,6 +684,7 @@ export const getSalesTrendsReport = async (filter: SalesTrendsFilter) => {
       totals.discountCents += toMoneyCents(daily.discountAmount);
       totals.productCostCents += toMoneyCents(daily.productCost);
       totals.expenseCents += toMoneyCents(daily.expenses);
+      totals.pendingFinanceOrderCount += daily.pendingFinanceOrderCount;
       return totals;
     },
     {
@@ -564,6 +694,7 @@ export const getSalesTrendsReport = async (filter: SalesTrendsFilter) => {
       discountCents: 0,
       productCostCents: 0,
       expenseCents: 0,
+      pendingFinanceOrderCount: 0,
     }
   );
   const netRevenueCents =
@@ -574,6 +705,8 @@ export const getSalesTrendsReport = async (filter: SalesTrendsFilter) => {
     reportType: "SALES_TRENDS_REPORT",
     timezone: BUSINESS_TIME_ZONE,
     profitAccuracy: "HISTORICAL_ORDER_ITEM_COST" as const,
+    financeAccounting:
+      "TIKTOK_SETTLEMENT_RECOGNIZED_AT_ORDER_LEVEL" as const,
     period: {
       startDate: filter.startDate,
       endDate: filter.endDate,
@@ -588,6 +721,7 @@ export const getSalesTrendsReport = async (filter: SalesTrendsFilter) => {
       grossProfit: fromMoneyCents(grossProfitCents),
       expenses: fromMoneyCents(summary.expenseCents),
       netProfit: fromMoneyCents(grossProfitCents - summary.expenseCents),
+      pendingFinanceOrderCount: summary.pendingFinanceOrderCount,
     },
     trends,
   };

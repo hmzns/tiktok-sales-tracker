@@ -107,6 +107,8 @@ router.get("/", (req, res) => {
             description:
               "Add local items and complete an imported TikTok order",
             body: {
+              paymentMode:
+                "FULL_TIKTOK | EXTERNAL_PRODUCT_PAYMENT (required)",
               items:
                 "non-empty array of { productId, quantity, optional sellPrice }",
               discount:
@@ -117,6 +119,22 @@ router.get("/", (req, res) => {
             method: "PATCH",
             path: "/orders/:id/status",
             description: "Update order status",
+          },
+          {
+            method: "PATCH",
+            path: "/orders/:id/tiktok-payment-mode",
+            description:
+              "Assign or correct a TikTok order payment mode without changing stock, items, totals, discounts, or status",
+            body: {
+              paymentMode:
+                "FULL_TIKTOK | EXTERNAL_PRODUCT_PAYMENT (required)",
+            },
+          },
+          {
+            method: "POST",
+            path: "/orders/:id/sync-tiktok-finance",
+            description:
+              "Synchronize finalized TikTok Finance aggregates for one TikTok order",
           },
         ],
         expenses: [

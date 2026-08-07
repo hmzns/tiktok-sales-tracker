@@ -23,6 +23,7 @@ const basicOrder: TikTokOrder = {
   payment: {
     currency: "MYR",
     sub_total: "25.00",
+    shipping_fee: "5.00",
     total_amount: "30.00",
   },
 };
@@ -61,8 +62,21 @@ test("a new TikTok order creates one incomplete order without items or stock wor
   assert.equal(createdOrders[0].source, "TIKTOK");
   assert.equal(createdOrders[0].platform, "TIKTOK_SHOP");
   assert.equal(createdOrders[0].total, 0);
+  assert.equal(String(createdOrders[0].buyerShippingFee), "5");
+  assert.equal(createdOrders[0].shippingFee, 0);
+  assert.equal(createdOrders[0].profit, 0);
   assert.equal("items" in createdOrders[0], false);
   assert.equal(stock, 12);
+});
+
+test("buyer shipping is stored informationally without changing tracker totals", () => {
+  const data = buildBasicTikTokOrderData(basicOrder, "shop-1", importedAt);
+
+  assert.equal(String(data.buyerShippingFee), "5");
+  assert.equal(data.subtotal, 0);
+  assert.equal(data.shippingFee, 0);
+  assert.equal(data.total, 0);
+  assert.equal(data.profit, 0);
 });
 
 test("an existing manually edited TikTok order is not changed", async () => {

@@ -1,4 +1,5 @@
 import prisma from "../lib/prisma";
+import { getRecognizedOrderFinancials } from "../utils/tiktokAccounting";
 
 type DashboardFilter = {
   year?: number;
@@ -47,10 +48,42 @@ export const getDashboardSummary = async (filter: DashboardFilter) => {
     },
   });
 
-  const revenue = orders.reduce((sum, order) => sum + order.total, 0);
-  const totalCost = orders.reduce((sum, order) => sum + order.totalCost, 0);
-  const profit = orders.reduce((sum, order) => sum + order.profit, 0);
+  const accountingByOrderId = new Map(
+    orders.map((order) => [
+      order.id,
+      getRecognizedOrderFinancials({
+        source: order.source,
+        paymentMode: order.tiktokPaymentMode,
+        financeStatus: order.financeStatus,
+        settlementAmount: order.tiktokSettlementAmount,
+        subtotal: order.subtotal,
+        discount: order.discount,
+        total: order.total,
+        totalCost: order.totalCost,
+        profit: order.profit,
+        items: order.items,
+      }),
+    ])
+  );
+  const recognizedAccounting = Array.from(accountingByOrderId.values()).filter(
+    (financials) => !financials.pending
+  );
+  const revenue = recognizedAccounting.reduce(
+    (sum, financials) => sum + (financials.revenue ?? 0),
+    0
+  );
+  const totalCost = recognizedAccounting.reduce(
+    (sum, financials) => sum + (financials.cost ?? 0),
+    0
+  );
+  const profit = recognizedAccounting.reduce(
+    (sum, financials) => sum + (financials.profit ?? 0),
+    0
+  );
   const orderCount = orders.length;
+  const pendingFinanceOrderCount = Array.from(
+    accountingByOrderId.values()
+  ).filter((financials) => financials.pending).length;
 
   const itemsSold = orders.reduce((sum, order) => {
     return (
@@ -59,7 +92,10 @@ export const getDashboardSummary = async (filter: DashboardFilter) => {
     );
   }, 0);
 
-  const averageOrderValue = orderCount > 0 ? revenue / orderCount : 0;
+  const averageOrderValue =
+    recognizedAccounting.length > 0
+      ? revenue / recognizedAccounting.length
+      : 0;
 
   const expenses = await prisma.expense.findMany({
     where: {
@@ -110,8 +146,11 @@ for (const order of orders) {
   const day = order.createdAt.getDate();
   const daily = dailySales[day - 1];
 
-  daily.revenue += order.total;
-  daily.profit += order.profit;
+  const accounting = accountingByOrderId.get(order.id);
+  if (!accounting?.pending) {
+    daily.revenue += accounting?.revenue ?? 0;
+    daily.profit += accounting?.profit ?? 0;
+  }
   daily.orderCount += 1;
 }
 
@@ -124,25 +163,37 @@ for (const order of orders) {
       quantitySold: number;
       revenue: number;
       profit: number;
+      financeExcludedUnits: number;
     }
   >();
 
   for (const order of orders) {
+    const excludeFullTikTokFinancials =
+      order.source === "TIKTOK" &&
+      order.tiktokPaymentMode === "FULL_TIKTOK";
+
     for (const item of order.items) {
       const existing = productMap.get(item.productId);
 
       if (existing) {
         existing.quantitySold += item.quantity;
-        existing.revenue += item.lineTotal;
-        existing.profit += item.lineProfit;
+        if (excludeFullTikTokFinancials) {
+          existing.financeExcludedUnits += item.quantity;
+        } else {
+          existing.revenue += item.lineTotal;
+          existing.profit += item.lineProfit;
+        }
       } else {
         productMap.set(item.productId, {
           productId: item.productId,
           name: item.product.name,
           sku: item.product.sku,
           quantitySold: item.quantity,
-          revenue: item.lineTotal,
-          profit: item.lineProfit,
+          revenue: excludeFullTikTokFinancials ? 0 : item.lineTotal,
+          profit: excludeFullTikTokFinancials ? 0 : item.lineProfit,
+          financeExcludedUnits: excludeFullTikTokFinancials
+            ? item.quantity
+            : 0,
         });
       }
     }
@@ -248,6 +299,8 @@ for (const movement of stockMovements) {
     orderCount,
     itemsSold,
     averageOrderValue,
+    pendingFinanceOrderCount,
+    financiallyRecognizedOrderCount: recognizedAccounting.length,
     topProducts,
     dailySales,
     expensesByCategory,

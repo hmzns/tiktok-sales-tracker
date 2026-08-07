@@ -3,8 +3,9 @@ import test from "node:test";
 import type { Prisma } from "@prisma/client";
 import prisma from "../src/lib/prisma";
 import {
-  completeImportedOrder,
+  completeImportedOrder as runCompleteImportedOrder,
   type OrderTransactionRunner,
+  updateTikTokPaymentMode,
   updateOrderStatus,
 } from "../src/services/order.service";
 import { AppError } from "../src/utils/AppError";
@@ -12,7 +13,26 @@ import {
   completeImportedOrderSchema,
   createOrderSchema,
   updateOrderStatusSchema,
+  updateTikTokPaymentModeSchema,
 } from "../src/validators/order.validator";
+
+type CompletionInput = Omit<
+  Parameters<typeof runCompleteImportedOrder>[1],
+  "paymentMode"
+> & {
+  paymentMode?: "FULL_TIKTOK" | "EXTERNAL_PRODUCT_PAYMENT";
+};
+
+const completeImportedOrder = (
+  id: string,
+  data: CompletionInput,
+  runTransaction?: OrderTransactionRunner
+) =>
+  runCompleteImportedOrder(
+    id,
+    { paymentMode: "EXTERNAL_PRODUCT_PAYMENT", ...data },
+    runTransaction
+  );
 
 type TestProduct = {
   id: string;
@@ -29,6 +49,7 @@ type TestOrder = {
   source: "MANUAL" | "TIKTOK";
   status: "NEEDS_ITEMS" | "COMPLETED" | "CANCELLED" | "REFUNDED";
   stockProcessed: boolean;
+  tiktokPaymentMode: "FULL_TIKTOK" | "EXTERNAL_PRODUCT_PAYMENT" | null;
   discountType: "NONE" | "FIXED" | "PERCENTAGE";
   discountValue: number;
   discount: number;
@@ -36,7 +57,9 @@ type TestOrder = {
   subtotal: number;
   total: number;
   totalCost: number;
-  profit: number;
+  profit: number | null;
+  financeStatus: "PENDING" | "SETTLED" | "UNAVAILABLE" | "ERROR" | null;
+  tiktokSettlementAmount: number | null;
   rawImportData: Record<string, unknown>;
 };
 
@@ -75,6 +98,7 @@ const makeOrder = (overrides: Partial<TestOrder> = {}): TestOrder => ({
   source: "TIKTOK",
   status: "NEEDS_ITEMS",
   stockProcessed: false,
+  tiktokPaymentMode: null,
   discountType: "NONE",
   discountValue: 0,
   discount: 0,
@@ -83,6 +107,8 @@ const makeOrder = (overrides: Partial<TestOrder> = {}): TestOrder => ({
   total: 0,
   totalCost: 0,
   profit: 0,
+  financeStatus: null,
+  tiktokSettlementAmount: null,
   rawImportData: { tiktokOrderId: "TT-1001", shopId: "shop-1" },
   ...overrides,
 });
@@ -226,7 +252,28 @@ const createHarness = (
 
 test("completion validation rejects empty items, duplicates, and invalid prices", () => {
   assert.equal(
-    completeImportedOrderSchema.safeParse({ items: [] }).success,
+    completeImportedOrderSchema.safeParse({
+      items: [{ productId: "product-1", quantity: 1 }],
+    }).success,
+    false
+  );
+  for (const paymentMode of [
+    "FULL_TIKTOK",
+    "EXTERNAL_PRODUCT_PAYMENT",
+  ]) {
+    assert.equal(
+      completeImportedOrderSchema.safeParse({
+        paymentMode,
+        items: [{ productId: "product-1", quantity: 1 }],
+      }).success,
+      true
+    );
+  }
+  assert.equal(
+    completeImportedOrderSchema.safeParse({
+      paymentMode: "FULL_TIKTOK",
+      items: [],
+    }).success,
     false
   );
   assert.equal(
@@ -274,6 +321,7 @@ test("manual-order validation accepts typed discounts and normalizes legacy fixe
   const legacyFixed = createOrderSchema.parse({
     items: [{ productId: "product-1", quantity: 1 }],
     discount: 5,
+    tiktokPaymentMode: "FULL_TIKTOK",
   });
 
   assert.deepEqual(percentage.discount, {
@@ -281,6 +329,7 @@ test("manual-order validation accepts typed discounts and normalizes legacy fixe
     value: 10,
   });
   assert.deepEqual(legacyFixed.discount, { type: "FIXED", value: 5 });
+  assert.equal("tiktokPaymentMode" in legacyFixed, false);
   assert.equal(percentage.status, "COMPLETED");
 });
 
@@ -313,6 +362,32 @@ test("missing orders return a clear not-found error", async () => {
       error.statusCode === 404 &&
       error.message === "Order not found"
   );
+});
+
+test("service rejects a missing payment mode without transaction side effects", async () => {
+  const initialState: TestState = {
+    order: makeOrder(),
+    products: [makeProduct("product-1")],
+    items: [],
+    movements: [],
+  };
+  const harness = createHarness(initialState);
+
+  await assert.rejects(
+    runCompleteImportedOrder(
+      "order-1",
+      {
+        items: [{ productId: "product-1", quantity: 1 }],
+      } as Parameters<typeof runCompleteImportedOrder>[1],
+      harness.runTransaction
+    ),
+    (error: unknown) =>
+      error instanceof AppError &&
+      error.statusCode === 400 &&
+      error.message === "TikTok payment mode is required"
+  );
+
+  assert.deepEqual(harness.getState(), initialState);
 });
 
 test("completes a TikTok import with one item, totals, stock, and movement", async () => {
@@ -350,11 +425,73 @@ test("completes a TikTok import with one item, totals, stock, and movement", asy
   assert.equal(state.items[0].allocatedDiscount, 0);
   assert.equal(state.order.total, 22);
   assert.equal(state.order.totalCost, 8);
-  assert.equal(state.order.profit, 14);
+  // External-product-payment profit recognizes tracker product revenue only;
+  // TikTok-side shipping enters through settlement when Finance is available.
+  assert.equal(state.order.profit, 12);
   assert.equal(state.order.status, "COMPLETED");
   assert.equal(state.order.stockProcessed, true);
+  assert.equal(
+    state.order.tiktokPaymentMode,
+    "EXTERNAL_PRODUCT_PAYMENT"
+  );
   assert.equal("rawImportData" in (result as object), false);
   assert.equal((result as { items: unknown[] }).items.length, 1);
+});
+
+test("FULL_TIKTOK completion is inventory-only and leaves profit pending", async () => {
+  const harness = createHarness({
+    order: makeOrder(),
+    products: [makeProduct("product-1", { sellPrice: 999, costPrice: 4 })],
+    items: [],
+    movements: [],
+  });
+
+  await completeImportedOrder(
+    "order-1",
+    {
+      paymentMode: "FULL_TIKTOK",
+      items: [{ productId: "product-1", quantity: 2 }],
+    },
+    harness.runTransaction
+  );
+  const state = harness.getState();
+
+  assert.equal(state.order.subtotal, 0);
+  assert.equal(state.order.discount, 0);
+  assert.equal(state.order.total, 0);
+  assert.equal(state.order.totalCost, 8);
+  assert.equal(state.order.profit, null);
+  assert.equal(state.order.financeStatus, "PENDING");
+  assert.equal(state.items[0].sellPrice, 0);
+  assert.equal(state.items[0].lineTotal, 0);
+  assert.equal(state.items[0].costPrice, 4);
+  assert.equal(state.items[0].lineCost, 8);
+  assert.equal(state.products[0].stock, 8);
+  assert.equal(state.movements.length, 1);
+});
+
+test("FULL_TIKTOK completion rejects tracker discounts without stock changes", async () => {
+  const initialState: TestState = {
+    order: makeOrder(),
+    products: [makeProduct("product-1")],
+    items: [],
+    movements: [],
+  };
+  const harness = createHarness(initialState);
+
+  await assert.rejects(
+    completeImportedOrder(
+      "order-1",
+      {
+        paymentMode: "FULL_TIKTOK",
+        discount: { type: "FIXED", value: 5 },
+        items: [{ productId: "product-1", quantity: 1 }],
+      },
+      harness.runTransaction
+    ),
+    /Manual discounts are not available/
+  );
+  assert.deepEqual(harness.getState(), initialState);
 });
 
 test("completes a TikTok import with multiple items and a sell-price override", async () => {
@@ -371,6 +508,7 @@ test("completes a TikTok import with multiple items and a sell-price override", 
   await completeImportedOrder(
     "order-1",
     {
+      paymentMode: "EXTERNAL_PRODUCT_PAYMENT",
       items: [
         { productId: "product-1", quantity: 2, sellPrice: 12 },
         { productId: "product-2", quantity: 3 },
@@ -389,6 +527,10 @@ test("completes a TikTok import with multiple items and a sell-price override", 
   assert.equal(state.order.subtotal, 48);
   assert.equal(state.order.totalCost, 17);
   assert.equal(state.order.profit, 31);
+  assert.equal(
+    state.order.tiktokPaymentMode,
+    "EXTERNAL_PRODUCT_PAYMENT"
+  );
 });
 
 test("persists and proportionally allocates a fixed discount", async () => {
@@ -626,6 +768,96 @@ test("manual orders cannot use the import-completion service", async () => {
       error instanceof AppError &&
       error.statusCode === 409 &&
       error.message === "Order is not an incomplete TikTok import"
+  );
+});
+
+test("historical TikTok payment mode can be assigned without other order changes", async () => {
+  const originalFindUnique = prisma.salesOrder.findUnique;
+  const originalUpdate = prisma.salesOrder.update;
+  const updateCalls: Array<Record<string, unknown>> = [];
+  const historicalOrder = {
+    id: "order-1",
+    source: "TIKTOK",
+    status: "COMPLETED",
+    stockProcessed: true,
+    tiktokPaymentMode: null,
+    items: [
+      {
+        id: "item-1",
+        productId: "product-1",
+        quantity: 2,
+        costPrice: 4,
+      },
+    ],
+    subtotal: 20,
+    discount: 2,
+    total: 18,
+  };
+
+  prisma.salesOrder.findUnique = (async () => ({
+    source: "TIKTOK",
+    financeStatus: null,
+    tiktokSettlementAmount: null,
+    subtotal: 20,
+    discount: 2,
+    items: [{ quantity: 2, costPrice: 4 }],
+  })) as unknown as typeof prisma.salesOrder.findUnique;
+  prisma.salesOrder.update = (async (args: {
+    data: Record<string, unknown>;
+  }) => {
+    updateCalls.push(args.data);
+    return { ...historicalOrder, ...args.data };
+  }) as unknown as typeof prisma.salesOrder.update;
+
+  try {
+    const updated = await updateTikTokPaymentMode(
+      "order-1",
+      "EXTERNAL_PRODUCT_PAYMENT"
+    );
+
+    assert.equal(updated.tiktokPaymentMode, "EXTERNAL_PRODUCT_PAYMENT");
+  } finally {
+    prisma.salesOrder.findUnique = originalFindUnique;
+    prisma.salesOrder.update = originalUpdate;
+  }
+
+  assert.deepEqual(updateCalls, [
+    { tiktokPaymentMode: "EXTERNAL_PRODUCT_PAYMENT", profit: 10 },
+  ]);
+  assert.equal(historicalOrder.status, "COMPLETED");
+  assert.equal(historicalOrder.stockProcessed, true);
+  assert.equal(historicalOrder.items.length, 1);
+  assert.equal(historicalOrder.total, 18);
+});
+
+test("manual orders cannot receive a TikTok payment mode", async () => {
+  const originalFindUnique = prisma.salesOrder.findUnique;
+  const originalUpdate = prisma.salesOrder.update;
+  let updateCalls = 0;
+
+  prisma.salesOrder.findUnique = (async () => ({
+    source: "MANUAL",
+  })) as unknown as typeof prisma.salesOrder.findUnique;
+  prisma.salesOrder.update = (async () => {
+    updateCalls += 1;
+    return {};
+  }) as unknown as typeof prisma.salesOrder.update;
+
+  try {
+    await assert.rejects(
+      updateTikTokPaymentMode("order-1", "FULL_TIKTOK"),
+      /only be set for TikTok orders/i
+    );
+  } finally {
+    prisma.salesOrder.findUnique = originalFindUnique;
+    prisma.salesOrder.update = originalUpdate;
+  }
+
+  assert.equal(updateCalls, 0);
+  assert.equal(
+    updateTikTokPaymentModeSchema.safeParse({ paymentMode: "INVALID" })
+      .success,
+    false
   );
 });
 

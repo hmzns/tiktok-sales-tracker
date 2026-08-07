@@ -182,6 +182,8 @@ test("monthly product performance uses stored item prices and distinct orders", 
       discountAmount: 8,
       netRevenue: 71,
       grossProfit: 32,
+      financeExcludedUnits: 0,
+      financeExcludedOrderCount: 0,
     });
     assert.equal(
       report.productPerformance.highlights.bestSellingProduct?.productId,
@@ -262,6 +264,172 @@ test("historical items without allocation and without discount keep gross revenu
   }
 });
 
+test("FULL_TIKTOK reports count operations, defer pending finances, and keep settlement at order level", async () => {
+  const originalSalesOrderFindMany = prisma.salesOrder.findMany;
+  const originalExpenseFindMany = prisma.expense.findMany;
+  const originalProductFindMany = prisma.product.findMany;
+  const originalStockMovementFindMany = prisma.stockMovement.findMany;
+  const product = {
+    name: "Finance-only Product",
+    sku: "FIN-01",
+    isActive: true,
+    category: null,
+  };
+  const financeAmount = (value: number) => ({ toNumber: () => value });
+  const orders = [
+    {
+      id: "pending-full",
+      orderNumber: "TT-PENDING",
+      source: "TIKTOK",
+      platform: "TIKTOK_SHOP",
+      status: "COMPLETED",
+      customerName: null,
+      createdAt: new Date(2026, 6, 5, 12),
+      subtotal: 0,
+      discount: 0,
+      shippingFee: 0,
+      total: 0,
+      totalCost: 10,
+      profit: null,
+      tiktokPaymentMode: "FULL_TIKTOK",
+      financeStatus: "PENDING",
+      tiktokSettlementAmount: null,
+      items: [
+        {
+          productId: "product-1",
+          quantity: 1,
+          sellPrice: 0,
+          costPrice: 10,
+          lineTotal: 0,
+          allocatedDiscount: null,
+          lineCost: 10,
+          lineProfit: 0,
+          product,
+        },
+      ],
+    },
+    {
+      id: "settled-full",
+      orderNumber: "TT-SETTLED",
+      source: "TIKTOK",
+      platform: "TIKTOK_SHOP",
+      status: "COMPLETED",
+      customerName: null,
+      createdAt: new Date(2026, 6, 6, 12),
+      subtotal: 0,
+      discount: 0,
+      shippingFee: 0,
+      total: 0,
+      totalCost: 16,
+      profit: 14,
+      tiktokPaymentMode: "FULL_TIKTOK",
+      financeStatus: "SETTLED",
+      tiktokSettlementAmount: financeAmount(30),
+      items: [
+        {
+          productId: "product-1",
+          quantity: 2,
+          sellPrice: 0,
+          costPrice: 8,
+          lineTotal: 0,
+          allocatedDiscount: null,
+          lineCost: 16,
+          lineProfit: 0,
+          product,
+        },
+      ],
+    },
+  ];
+
+  prisma.salesOrder.findMany = (async () =>
+    orders) as unknown as typeof prisma.salesOrder.findMany;
+  prisma.expense.findMany = (async () => []) as typeof prisma.expense.findMany;
+  prisma.product.findMany = (async () => []) as typeof prisma.product.findMany;
+  prisma.stockMovement.findMany = (async () =>
+    []) as typeof prisma.stockMovement.findMany;
+
+  try {
+    const monthly = await getMonthlySalesReport({ year: 2026, month: 7 });
+
+    assert.equal(monthly.summary.totalOrders, 2);
+    assert.equal(monthly.summary.totalItemsSold, 3);
+    assert.equal(monthly.summary.pendingFinanceOrderCount, 1);
+    assert.equal(monthly.summary.financiallyRecognizedOrderCount, 1);
+    assert.equal(monthly.summary.totalRevenue, 30);
+    assert.equal(monthly.summary.totalCost, 16);
+    assert.equal(monthly.summary.salesProfit, 14);
+    assert.deepEqual(
+      monthly.orderRows.map((order) => ({
+        orderNumber: order.orderNumber,
+        total: order.total,
+        totalCost: order.totalCost,
+        profit: order.profit,
+        financePending: order.financePending,
+      })),
+      [
+        {
+          orderNumber: "TT-PENDING",
+          total: null,
+          totalCost: null,
+          profit: null,
+          financePending: true,
+        },
+        {
+          orderNumber: "TT-SETTLED",
+          total: 30,
+          totalCost: 16,
+          profit: 14,
+          financePending: false,
+        },
+      ]
+    );
+
+    assert.equal(monthly.productPerformance.summary.unitsSold, 3);
+    assert.equal(monthly.productPerformance.summary.financeExcludedUnits, 3);
+    assert.equal(
+      monthly.productPerformance.summary.financeExcludedOrderCount,
+      2
+    );
+    assert.equal(monthly.productPerformance.summary.netRevenue, 0);
+    assert.equal(monthly.productPerformance.summary.grossProfit, 0);
+    assert.equal(
+      monthly.productPerformance.financeAllocation,
+      "FULL_TIKTOK_ORDER_FINANCE_EXCLUDED_FROM_PRODUCT_METRICS"
+    );
+
+    const dashboard = await getDashboardSummary({ year: 2026, month: 7 });
+
+    assert.equal(dashboard.orderCount, 2);
+    assert.equal(dashboard.itemsSold, 3);
+    assert.equal(dashboard.pendingFinanceOrderCount, 1);
+    assert.equal(dashboard.financiallyRecognizedOrderCount, 1);
+    assert.equal(dashboard.revenue, 30);
+    assert.equal(dashboard.totalCost, 16);
+    assert.equal(dashboard.profit, 14);
+    assert.equal(dashboard.topProducts[0].quantitySold, 3);
+    assert.equal(dashboard.topProducts[0].financeExcludedUnits, 3);
+    assert.equal(dashboard.topProducts[0].revenue, 0);
+    assert.equal(dashboard.topProducts[0].profit, 0);
+
+    const trends = await getSalesTrendsReport({
+      startDate: "2026-07-05",
+      endDate: "2026-07-06",
+    });
+
+    assert.equal(trends.summary.orderCount, 2);
+    assert.equal(trends.summary.unitsSold, 3);
+    assert.equal(trends.summary.pendingFinanceOrderCount, 1);
+    assert.equal(trends.summary.netRevenue, 30);
+    assert.equal(trends.summary.productCost, 16);
+    assert.equal(trends.summary.grossProfit, 14);
+  } finally {
+    prisma.salesOrder.findMany = originalSalesOrderFindMany;
+    prisma.expense.findMany = originalExpenseFindMany;
+    prisma.product.findMany = originalProductFindMany;
+    prisma.stockMovement.findMany = originalStockMovementFindMany;
+  }
+});
+
 test("sales trends allocate discounts, use historical cost, and include zero days", async () => {
   const originalSalesOrderFindMany = prisma.salesOrder.findMany;
   const originalExpenseFindMany = prisma.expense.findMany;
@@ -333,6 +501,7 @@ test("sales trends allocate discounts, use historical cost, and include zero day
       grossProfit: 0,
       expenses: 5.25,
       netProfit: -5.25,
+      pendingFinanceOrderCount: 0,
     });
     assert.deepEqual(report.trends[1], {
       date: "2026-08-02",
@@ -345,6 +514,7 @@ test("sales trends allocate discounts, use historical cost, and include zero day
       grossProfit: 14,
       expenses: 2,
       netProfit: 12,
+      pendingFinanceOrderCount: 0,
     });
     assert.deepEqual(report.trends[2], {
       date: "2026-08-03",
@@ -357,6 +527,7 @@ test("sales trends allocate discounts, use historical cost, and include zero day
       grossProfit: 3,
       expenses: 0,
       netProfit: 3,
+      pendingFinanceOrderCount: 0,
     });
     assert.equal(report.trends[3].orderCount, 0);
     assert.deepEqual(report.summary, {
@@ -369,6 +540,7 @@ test("sales trends allocate discounts, use historical cost, and include zero day
       grossProfit: 17,
       expenses: 7.25,
       netProfit: 9.75,
+      pendingFinanceOrderCount: 0,
     });
 
     const salesQuery = orderQuery as {
@@ -388,6 +560,51 @@ test("sales trends allocate discounts, use historical cost, and include zero day
       amount: true,
       expenseDate: true,
     });
+  } finally {
+    prisma.salesOrder.findMany = originalSalesOrderFindMany;
+    prisma.expense.findMany = originalExpenseFindMany;
+  }
+});
+
+test("sales trends intentionally defer external TikTok settlement integration", async () => {
+  const originalSalesOrderFindMany = prisma.salesOrder.findMany;
+  const originalExpenseFindMany = prisma.expense.findMany;
+
+  prisma.salesOrder.findMany = (async () => [
+    {
+      id: "external-settled",
+      createdAt: new Date(2026, 7, 2, 12),
+      source: "TIKTOK",
+      tiktokPaymentMode: "EXTERNAL_PRODUCT_PAYMENT",
+      financeStatus: "SETTLED",
+      tiktokSettlementAmount: { toNumber: () => 100 },
+      subtotal: 20,
+      discount: 2,
+      total: 18,
+      totalCost: 8,
+      profit: 110,
+      items: [
+        {
+          quantity: 2,
+          sellPrice: 10,
+          costPrice: 4,
+          allocatedDiscount: 2,
+        },
+      ],
+    },
+  ]) as unknown as typeof prisma.salesOrder.findMany;
+  prisma.expense.findMany = (async () => []) as typeof prisma.expense.findMany;
+
+  try {
+    const report = await getSalesTrendsReport({
+      startDate: "2026-08-02",
+      endDate: "2026-08-02",
+    });
+
+    assert.equal(report.summary.orderCount, 1);
+    assert.equal(report.summary.netRevenue, 18);
+    assert.equal(report.summary.productCost, 8);
+    assert.equal(report.summary.grossProfit, 10);
   } finally {
     prisma.salesOrder.findMany = originalSalesOrderFindMany;
     prisma.expense.findMany = originalExpenseFindMany;

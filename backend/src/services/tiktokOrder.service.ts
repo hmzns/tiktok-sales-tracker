@@ -62,6 +62,7 @@ type BasicTikTokOrderCreateData = {
   importedAt: Date;
   rawImportData: Prisma.InputJsonObject;
   stockProcessed: false;
+  buyerShippingFee: Prisma.Decimal | null;
   platform: "TIKTOK_SHOP";
   customerName: string;
   subtotal: 0;
@@ -114,6 +115,25 @@ const toSafePaymentValue = (
   return toSafeText(value, 64);
 };
 
+const toBuyerShippingFee = (
+  value: string | number | null | undefined
+) => {
+  const safeValue = toSafePaymentValue(value);
+
+  if (safeValue === undefined) {
+    return null;
+  }
+
+  try {
+    const amount = new Prisma.Decimal(safeValue);
+    return amount.isFinite() && amount.greaterThanOrEqualTo(0)
+      ? amount
+      : null;
+  } catch {
+    return null;
+  }
+};
+
 export const sanitizeTikTokOrderMetadata = (
   order: TikTokOrder,
   shopId: string | null
@@ -162,6 +182,7 @@ export const buildBasicTikTokOrderData = (
   importedAt,
   rawImportData: sanitizeTikTokOrderMetadata(order, shopId),
   stockProcessed: false,
+  buyerShippingFee: toBuyerShippingFee(order.payment?.shipping_fee),
   platform: "TIKTOK_SHOP",
   customerName:
     toSafeText(order.recipient_address?.name, 200) ??

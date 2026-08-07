@@ -4,9 +4,11 @@ import {
   createOrder,
   getAllOrders,
   getOrderById,
+  updateTikTokPaymentMode,
   updateOrderStatus,
 } from "../services/order.service";
 import { AppError } from "../utils/AppError";
+import { syncTikTokFinanceForOrder } from "../services/tiktokFinance.service";
 
 // POST /orders
 export const addOrder = async (req: Request, res: Response) => {
@@ -106,5 +108,31 @@ export const editOrderStatus = async (req: Request, res: Response) => {
   return res.json({
     success: true,
     data: order,
+  });
+};
+
+// PATCH /orders/:id/tiktok-payment-mode
+export const editTikTokPaymentMode = async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const { paymentMode } = req.body;
+  const order = await updateTikTokPaymentMode(id, paymentMode);
+
+  return res.json({
+    success: true,
+    data: order,
+  });
+};
+
+// POST /orders/:id/sync-tiktok-finance
+export const syncOrderTikTokFinance = async (
+  req: Request,
+  res: Response
+) => {
+  const id = req.params.id as string;
+  const result = await syncTikTokFinanceForOrder(id);
+
+  return res.json({
+    success: true,
+    data: result,
   });
 };

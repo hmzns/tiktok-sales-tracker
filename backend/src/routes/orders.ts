@@ -5,12 +5,15 @@ import {
   getOrders,
   getOrder,
   editOrderStatus,
+  editTikTokPaymentMode,
+  syncOrderTikTokFinance,
 } from "../controllers/order.controller";
 import { validate } from "../middleware/validate";
 import {
   completeImportedOrderSchema,
   createOrderSchema,
   updateOrderStatusSchema,
+  updateTikTokPaymentModeSchema,
 } from "../validators/order.validator";
 
 const router = Router();
@@ -24,5 +27,11 @@ router.post(
   completeOrderImport
 );
 router.patch("/:id/status", validate(updateOrderStatusSchema), editOrderStatus);
+router.patch(
+  "/:id/tiktok-payment-mode",
+  validate(updateTikTokPaymentModeSchema),
+  editTikTokPaymentMode
+);
+router.post("/:id/sync-tiktok-finance", syncOrderTikTokFinance);
 
 export default router;

@@ -82,8 +82,18 @@ export const updateOrderStatusSchema = z.object({
   status: z.enum(["NEEDS_ITEMS", "COMPLETED", "CANCELLED", "REFUNDED"]),
 });
 
+export const tikTokPaymentModeSchema = z.enum([
+  "FULL_TIKTOK",
+  "EXTERNAL_PRODUCT_PAYMENT",
+]);
+
+export const updateTikTokPaymentModeSchema = z.object({
+  paymentMode: tikTokPaymentModeSchema,
+});
+
 export const completeImportedOrderSchema = z
   .object({
+    paymentMode: tikTokPaymentModeSchema,
     discount: orderDiscountSchema.optional().default(defaultDiscount),
     items: z
       .array(
