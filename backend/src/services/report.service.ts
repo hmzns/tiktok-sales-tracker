@@ -642,9 +642,19 @@ export const getSalesTrendsReport = async (filter: SalesTrendsFilter) => {
       daily.productCostCents += financials.productCostCents;
     }
 
-    // Keep Sales Trends on its existing tracker-product basis for external
-    // product payments. TikTok settlement integration here is intentionally
-    // deferred until real Seller Center settlements have been reconciled.
+    // EXTERNAL_PRODUCT_PAYMENT recognizes tracker net product revenue plus
+    // settlement_amount. The latter is already net of TikTok finance
+    // components, so add it once at order/day level without product allocation.
+    if (
+      order.source === "TIKTOK" &&
+      order.tiktokPaymentMode === "EXTERNAL_PRODUCT_PAYMENT" &&
+      order.financeStatus === "SETTLED" &&
+      order.tiktokSettlementAmount !== null
+    ) {
+      daily.grossRevenueCents += toMoneyCents(
+        order.tiktokSettlementAmount.toNumber()
+      );
+    }
   }
 
   for (const expense of expenses) {

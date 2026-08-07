@@ -43,6 +43,11 @@ type CompleteImportedOrderInput = {
   }[];
 };
 
+export type TrackerPriceCorrectionInput = {
+  orderItemId: string;
+  unitPrice: number;
+};
+
 type OrderProduct = {
   id: string;
   name: string;
@@ -85,8 +90,7 @@ const normalizeDiscountInput = (
 
 const buildOrderItemSnapshots = (
   items: CompleteImportedOrderInput["items"],
-  products: OrderProduct[],
-  useTrackerPricing: boolean
+  products: OrderProduct[]
 ) => {
   const productsById = new Map(
     products.map((product) => [product.id, product])
@@ -115,9 +119,7 @@ const buildOrderItemSnapshots = (
       throw new AppError(`Not enough stock for ${product.name}`, 400);
     }
 
-    const rawSellPrice = useTrackerPricing
-      ? item.sellPrice ?? product.sellPrice
-      : 0;
+    const rawSellPrice = item.sellPrice ?? product.sellPrice;
 
     if (!Number.isFinite(rawSellPrice) || rawSellPrice < 0) {
       throw new AppError("Sell price must be a non-negative number", 400);
@@ -149,9 +151,9 @@ const buildOrderFinancials = (
   discountInput: OrderDiscountInput | number | undefined,
   shippingFee: number
 ) => {
-  // Snapshot tracker prices for manual/external-payment revenue and costs so
-  // later catalogue edits do not rewrite historical tracker financials.
-  const orderItemsData = buildOrderItemSnapshots(items, products, true);
+  // Snapshot tracker prices and costs for every order so later catalogue edits
+  // do not rewrite historical tracker reference data.
+  const orderItemsData = buildOrderItemSnapshots(items, products);
 
   const subtotalCents = orderItemsData.reduce(
     (sum, item) => sum + item.lineTotalCents,
@@ -234,41 +236,6 @@ const buildOrderFinancials = (
     totalCost: fromMoneyCents(totalCostCents),
     total: fromMoneyCents(totalCents),
     profit: fromMoneyCents(totalCents - totalCostCents),
-  };
-};
-
-const buildFullTikTokInventoryCompletion = (
-  items: CompleteImportedOrderInput["items"],
-  products: OrderProduct[]
-) => {
-  // FULL_TIKTOK completion establishes product identity, quantity, and COGS.
-  // Catalogue sell prices are deliberately excluded because TikTok Finance is
-  // authoritative for the order's revenue and final profit.
-  const snapshots = buildOrderItemSnapshots(items, products, false);
-  const totalCostCents = snapshots.reduce(
-    (sum, item) => sum + item.lineCostCents,
-    0
-  );
-
-  return {
-    orderItemsData: snapshots.map((item) => ({
-      productId: item.productId,
-      quantity: item.quantity,
-      sellPrice: 0,
-      costPrice: item.costPrice,
-      lineTotal: 0,
-      allocatedDiscount: null,
-      lineCost: fromMoneyCents(item.lineCostCents),
-      lineProfit: 0,
-    })),
-    subtotal: 0,
-    discountType: "NONE" as const,
-    discountValue: 0,
-    discount: 0,
-    shippingFee: 0,
-    totalCost: fromMoneyCents(totalCostCents),
-    total: 0,
-    profit: null,
   };
 };
 
@@ -496,15 +463,17 @@ export const completeImportedOrder = async (
       throw new AppError("One or more products were not found", 404);
     }
 
-    const completion =
+    // Tracker prices are historical snapshots for every payment mode. For
+    // FULL_TIKTOK they remain reference data and are excluded from the
+    // authoritative settlement-based profit calculation below.
+    const completion = buildOrderFinancials(
+      data.items,
+      products,
       data.paymentMode === "FULL_TIKTOK"
-        ? buildFullTikTokInventoryCompletion(data.items, products)
-        : buildOrderFinancials(
-            data.items,
-            products,
-            data.discount,
-            order.shippingFee
-          );
+        ? { type: "NONE", value: 0 }
+        : data.discount,
+      order.shippingFee
+    );
     const {
       orderItemsData,
       subtotal,
@@ -582,57 +551,189 @@ export const completeImportedOrder = async (
 // PATCH /orders/:id/tiktok-payment-mode
 export const updateTikTokPaymentMode = async (
   id: string,
-  paymentMode: "FULL_TIKTOK" | "EXTERNAL_PRODUCT_PAYMENT"
+  paymentMode: "FULL_TIKTOK" | "EXTERNAL_PRODUCT_PAYMENT",
+  trackerPriceCorrections: TrackerPriceCorrectionInput[] = [],
+  runTransaction: OrderTransactionRunner = (callback) =>
+    prisma.$transaction(callback)
 ) => {
   if (!isTikTokPaymentMode(paymentMode)) {
     throw new AppError("Invalid TikTok payment mode", 400);
   }
 
-  const order = await prisma.salesOrder.findUnique({
-    where: { id },
-    select: {
-      source: true,
-      financeStatus: true,
-      tiktokSettlementAmount: true,
-      subtotal: true,
-      discount: true,
-      items: {
-        select: {
-          quantity: true,
-          costPrice: true,
+  return runTransaction(async (tx) => {
+    const order = await tx.salesOrder.findUnique({
+      where: { id },
+      select: {
+        source: true,
+        financeStatus: true,
+        tiktokSettlementAmount: true,
+        subtotal: true,
+        discount: true,
+        shippingFee: true,
+        items: {
+          select: {
+            id: true,
+            quantity: true,
+            sellPrice: true,
+            costPrice: true,
+            lineTotal: true,
+            allocatedDiscount: true,
+          },
         },
       },
-    },
-  });
+    });
 
-  if (!order) {
-    throw new AppError("Order not found", 404);
-  }
+    if (!order) {
+      throw new AppError("Order not found", 404);
+    }
 
-  if (order.source !== "TIKTOK") {
-    throw new AppError("Payment mode can only be set for TikTok orders", 409);
-  }
+    if (order.source !== "TIKTOK") {
+      throw new AppError("Payment mode can only be set for TikTok orders", 409);
+    }
 
-  const profit = calculateTikTokOrderProfit({
-    paymentMode,
-    financeStatus: order.financeStatus,
-    settlementAmount: order.tiktokSettlementAmount,
-    subtotal: order.subtotal,
-    discount: order.discount,
-    items: order.items,
-  });
+    let trackerSubtotal = order.subtotal;
+    let historicalItems = order.items;
 
-  return prisma.salesOrder.update({
-    where: { id },
-    data: { tiktokPaymentMode: paymentMode, profit },
-    include: {
-      items: {
-        include: {
-          product: true,
+    if (paymentMode === "EXTERNAL_PRODUCT_PAYMENT") {
+      const missingSnapshotIds = new Set(
+        order.items
+          .filter(
+            (item) =>
+              item.quantity > 0 &&
+              item.sellPrice === 0 &&
+              item.lineTotal === 0 &&
+              item.allocatedDiscount === null
+          )
+          .map((item) => item.id)
+      );
+      const correctionsByItemId = new Map<string, number>();
+
+      for (const correction of trackerPriceCorrections) {
+        if (
+          correctionsByItemId.has(correction.orderItemId) ||
+          !missingSnapshotIds.has(correction.orderItemId)
+        ) {
+          throw new AppError("Invalid tracker price confirmation", 400);
+        }
+
+        if (!Number.isFinite(correction.unitPrice) || correction.unitPrice <= 0) {
+          throw new AppError(
+            "Confirmed tracker unit prices must be greater than zero",
+            400
+          );
+        }
+
+        correctionsByItemId.set(
+          correction.orderItemId,
+          roundMoney(correction.unitPrice)
+        );
+      }
+
+      if (
+        missingSnapshotIds.size !== correctionsByItemId.size ||
+        [...missingSnapshotIds].some(
+          (itemId) => !correctionsByItemId.has(itemId)
+        )
+      ) {
+        throw new AppError(
+          "Tracker price information is missing for this order. Confirm the product prices before changing the payment method.",
+          409
+        );
+      }
+
+      historicalItems = order.items.map((item) => ({
+        ...item,
+        sellPrice: correctionsByItemId.get(item.id) ?? item.sellPrice,
+      }));
+      const lineTotalCents = historicalItems.map((item) =>
+        toMoneyCents(item.sellPrice * item.quantity)
+      );
+      const subtotalCents = lineTotalCents.reduce(
+        (sum, amount) => sum + amount,
+        0
+      );
+      const discountCents = toMoneyCents(order.discount);
+
+      if (subtotalCents <= 0 || discountCents > subtotalCents) {
+        throw new AppError(
+          "Stored tracker prices cannot support this order's historical discount",
+          409
+        );
+      }
+
+      const allocatedDiscountCents = allocateDiscountCents(
+        lineTotalCents,
+        discountCents
+      );
+
+      for (const [index, item] of historicalItems.entries()) {
+        const lineCostCents = toMoneyCents(item.costPrice * item.quantity);
+        const lineNetRevenueCents =
+          lineTotalCents[index] - allocatedDiscountCents[index];
+
+        await tx.orderItem.update({
+          where: { id: item.id },
+          data: {
+            sellPrice: item.sellPrice,
+            lineTotal: fromMoneyCents(lineTotalCents[index]),
+            allocatedDiscount: fromMoneyCents(
+              allocatedDiscountCents[index]
+            ),
+            lineCost: fromMoneyCents(lineCostCents),
+            lineProfit: fromMoneyCents(
+              lineNetRevenueCents - lineCostCents
+            ),
+          },
+        });
+      }
+
+      trackerSubtotal = fromMoneyCents(subtotalCents);
+    }
+
+    const totalCost = fromMoneyCents(
+      historicalItems.reduce(
+        (sum, item) =>
+          sum + toMoneyCents(item.costPrice * item.quantity),
+        0
+      )
+    );
+    const profit = calculateTikTokOrderProfit({
+      paymentMode,
+      financeStatus: order.financeStatus,
+      settlementAmount: order.tiktokSettlementAmount,
+      subtotal: trackerSubtotal,
+      discount: order.discount,
+      items: historicalItems,
+    });
+    const orderFinancialUpdates =
+      paymentMode === "EXTERNAL_PRODUCT_PAYMENT"
+        ? {
+            subtotal: trackerSubtotal,
+            total: fromMoneyCents(
+              toMoneyCents(trackerSubtotal) -
+                toMoneyCents(order.discount) +
+                toMoneyCents(order.shippingFee)
+            ),
+            totalCost,
+          }
+        : {};
+
+    return tx.salesOrder.update({
+      where: { id },
+      data: {
+        tiktokPaymentMode: paymentMode,
+        profit,
+        ...orderFinancialUpdates,
+      },
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
         },
       },
-    },
-    omit: publicOrderOmit,
+      omit: publicOrderOmit,
+    });
   });
 };
 

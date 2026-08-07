@@ -285,10 +285,10 @@ test("FULL_TIKTOK reports count operations, defer pending finances, and keep set
       status: "COMPLETED",
       customerName: null,
       createdAt: new Date(2026, 6, 5, 12),
-      subtotal: 0,
+      subtotal: 25,
       discount: 0,
       shippingFee: 0,
-      total: 0,
+      total: 25,
       totalCost: 10,
       profit: null,
       tiktokPaymentMode: "FULL_TIKTOK",
@@ -298,12 +298,12 @@ test("FULL_TIKTOK reports count operations, defer pending finances, and keep set
         {
           productId: "product-1",
           quantity: 1,
-          sellPrice: 0,
+          sellPrice: 25,
           costPrice: 10,
-          lineTotal: 0,
-          allocatedDiscount: null,
+          lineTotal: 25,
+          allocatedDiscount: 0,
           lineCost: 10,
-          lineProfit: 0,
+          lineProfit: 15,
           product,
         },
       ],
@@ -316,10 +316,10 @@ test("FULL_TIKTOK reports count operations, defer pending finances, and keep set
       status: "COMPLETED",
       customerName: null,
       createdAt: new Date(2026, 6, 6, 12),
-      subtotal: 0,
+      subtotal: 50,
       discount: 0,
       shippingFee: 0,
-      total: 0,
+      total: 50,
       totalCost: 16,
       profit: 14,
       tiktokPaymentMode: "FULL_TIKTOK",
@@ -329,12 +329,12 @@ test("FULL_TIKTOK reports count operations, defer pending finances, and keep set
         {
           productId: "product-1",
           quantity: 2,
-          sellPrice: 0,
+          sellPrice: 25,
           costPrice: 8,
-          lineTotal: 0,
-          allocatedDiscount: null,
+          lineTotal: 50,
+          allocatedDiscount: 0,
           lineCost: 16,
-          lineProfit: 0,
+          lineProfit: 34,
           product,
         },
       ],
@@ -566,7 +566,7 @@ test("sales trends allocate discounts, use historical cost, and include zero day
   }
 });
 
-test("sales trends intentionally defer external TikTok settlement integration", async () => {
+test("sales trends add external TikTok settlement exactly once", async () => {
   const originalSalesOrderFindMany = prisma.salesOrder.findMany;
   const originalExpenseFindMany = prisma.expense.findMany;
 
@@ -602,9 +602,11 @@ test("sales trends intentionally defer external TikTok settlement integration", 
     });
 
     assert.equal(report.summary.orderCount, 1);
-    assert.equal(report.summary.netRevenue, 18);
+    assert.equal(report.summary.grossRevenue, 120);
+    assert.equal(report.summary.discountAmount, 2);
+    assert.equal(report.summary.netRevenue, 118);
     assert.equal(report.summary.productCost, 8);
-    assert.equal(report.summary.grossProfit, 10);
+    assert.equal(report.summary.grossProfit, 110);
   } finally {
     prisma.salesOrder.findMany = originalSalesOrderFindMany;
     prisma.expense.findMany = originalExpenseFindMany;

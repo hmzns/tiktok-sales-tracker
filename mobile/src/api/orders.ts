@@ -15,6 +15,7 @@ export type OrderItem = {
     id: string;
     name: string;
     sku: string;
+    sellPrice: number;
   };
 };
 
@@ -268,11 +269,15 @@ export const completeImportedOrder = async (
 
 export const updateTikTokPaymentMode = async (
   salesOrderId: string,
-  paymentMode: TikTokPaymentMode
+  paymentMode: TikTokPaymentMode,
+  trackerPriceCorrections: Array<{
+    orderItemId: string;
+    unitPrice: number;
+  }> = []
 ): Promise<SalesOrder> => {
   const response = await apiClient.patch(
     `/orders/${salesOrderId}/tiktok-payment-mode`,
-    { paymentMode }
+    { paymentMode, trackerPriceCorrections }
   );
 
   return response.data.data;

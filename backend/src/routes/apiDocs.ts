@@ -124,10 +124,12 @@ router.get("/", (req, res) => {
             method: "PATCH",
             path: "/orders/:id/tiktok-payment-mode",
             description:
-              "Assign or correct a TikTok order payment mode without changing stock, items, totals, discounts, or status",
+              "Assign or correct a TikTok order payment mode without changing stock, quantities, Finance data, or status",
             body: {
               paymentMode:
                 "FULL_TIKTOK | EXTERNAL_PRODUCT_PAYMENT (required)",
+              trackerPriceCorrections:
+                "required only for affected legacy items: array of confirmed { orderItemId, unitPrice }",
             },
           },
           {

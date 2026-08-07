@@ -174,13 +174,14 @@ for (const order of orders) {
 
     for (const item of order.items) {
       const existing = productMap.get(item.productId);
+      const trackerNetLineRevenue = item.lineProfit + item.lineCost;
 
       if (existing) {
         existing.quantitySold += item.quantity;
         if (excludeFullTikTokFinancials) {
           existing.financeExcludedUnits += item.quantity;
         } else {
-          existing.revenue += item.lineTotal;
+          existing.revenue += trackerNetLineRevenue;
           existing.profit += item.lineProfit;
         }
       } else {
@@ -189,7 +190,7 @@ for (const order of orders) {
           name: item.product.name,
           sku: item.product.sku,
           quantitySold: item.quantity,
-          revenue: excludeFullTikTokFinancials ? 0 : item.lineTotal,
+          revenue: excludeFullTikTokFinancials ? 0 : trackerNetLineRevenue,
           profit: excludeFullTikTokFinancials ? 0 : item.lineProfit,
           financeExcludedUnits: excludeFullTikTokFinancials
             ? item.quantity

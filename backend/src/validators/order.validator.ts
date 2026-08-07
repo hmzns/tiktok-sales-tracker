@@ -89,6 +89,18 @@ export const tikTokPaymentModeSchema = z.enum([
 
 export const updateTikTokPaymentModeSchema = z.object({
   paymentMode: tikTokPaymentModeSchema,
+  trackerPriceCorrections: z
+    .array(
+      z.object({
+        orderItemId: z.string().trim().min(1, "Order item ID is required"),
+        unitPrice: z.coerce
+          .number()
+          .finite("Unit price must be finite")
+          .positive("Unit price must be greater than zero"),
+      })
+    )
+    .optional()
+    .default([]),
 });
 
 export const completeImportedOrderSchema = z

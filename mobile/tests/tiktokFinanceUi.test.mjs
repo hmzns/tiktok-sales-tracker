@@ -48,20 +48,38 @@ test("Finance UI labels buyer shipping informationally and preserves interpretat
   assert.match(screenSource, /are not added or\s+subtracted again/);
 });
 
-test("FULL_TIKTOK completion is cost-only and does not expose tracker discount controls", () => {
+test("FULL_TIKTOK completion shows reference snapshots without tracker discount controls", () => {
   assert.match(
     screenSource,
     /paymentMode !== "FULL_TIKTOK" \? \(\s+<View style=\{styles\.discountSection\}>/
   );
   assert.match(
     screenSource,
-    /paymentMode === "FULL_TIKTOK" \? \(\s+<View style=\{\[styles\.summaryRow, styles\.estimatedTotalRow\]\}>/
+    /paymentMode === "FULL_TIKTOK" \? \(\s+<>[\s\S]+Tracker line value \(reference\)/
   );
   assert.match(screenSource, />\s*Historical product cost\s*</);
+  assert.match(screenSource, />Tracker Price</);
+  assert.match(screenSource, />Tracker Line Value</);
+  assert.match(
+    screenSource,
+    /TikTok\s+settlement, not these values, determines final revenue and profit/
+  );
   assert.match(
     screenSource,
     /Complete this inventory match and deduct the selected quantities from stock\? Profit will remain pending until TikTok settlement is available/
   );
+});
+
+test("legacy zero-price orders require explicit per-item price confirmation", () => {
+  assert.match(
+    screenSource,
+    /Tracker price information is missing for this order/
+  );
+  assert.match(screenSource, /Current tracker prices are suggestions only/);
+  assert.match(screenSource, /Suggested current tracker price/);
+  assert.match(screenSource, /Confirmed unit price \(RM\)/);
+  assert.match(screenSource, /trackerPriceCorrections/);
+  assert.match(screenSource, />\s*Confirm Prices & Change\s*</);
 });
 
 test("Finance status and sync states use safe user-facing messages", () => {

@@ -56,6 +56,10 @@ type SelectedImportedOrderItem = {
   costPrice: number;
 };
 
+type TrackerPriceRecovery = {
+  pricesByOrderItemId: Record<string, string>;
+};
+
 type ApiError = {
   code?: string;
   response?: {
@@ -196,6 +200,10 @@ export default function OrderDetailScreen() {
   const [completionError, setCompletionError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [updatingPaymentMode, setUpdatingPaymentMode] = useState(false);
+  const [trackerPriceRecovery, setTrackerPriceRecovery] =
+    useState<TrackerPriceRecovery | null>(null);
+  const [trackerPriceRecoveryError, setTrackerPriceRecoveryError] =
+    useState("");
   const [syncingFinance, setSyncingFinance] = useState(false);
   const [financeMessage, setFinanceMessage] = useState<{
     tone: "success" | "warning" | "danger";
@@ -326,20 +334,38 @@ export default function OrderDetailScreen() {
     );
   };
 
-  const applyHistoricalPaymentMode = async (nextMode: TikTokPaymentMode) => {
+  const applyHistoricalPaymentMode = async (
+    nextMode: TikTokPaymentMode,
+    trackerPriceCorrections: Array<{
+      orderItemId: string;
+      unitPrice: number;
+    }> = []
+  ) => {
     if (!orderId) return;
 
     try {
       setUpdatingPaymentMode(true);
-      const updatedOrder = await saveTikTokPaymentMode(orderId, nextMode);
+      const updatedOrder = await saveTikTokPaymentMode(
+        orderId,
+        nextMode,
+        trackerPriceCorrections
+      );
       setOrder(updatedOrder);
       setPaymentMode(updatedOrder.tiktokPaymentMode);
+      setTrackerPriceRecovery(null);
+      setTrackerPriceRecoveryError("");
       setFinanceMessage(null);
       showSuccessMessage("TikTok payment method updated.");
-    } catch {
+    } catch (error) {
+      const responseMessage =
+        typeof error === "object" && error !== null
+          ? (error as ApiError).response?.data?.message
+          : undefined;
       Alert.alert(
         "Update failed",
-        "Unable to update the TikTok payment method. Please try again."
+        typeof responseMessage === "string"
+          ? responseMessage
+          : "Unable to update the TikTok payment method. Please try again."
       );
     } finally {
       setUpdatingPaymentMode(false);
@@ -349,6 +375,31 @@ export default function OrderDetailScreen() {
   const handleHistoricalPaymentMode = (nextMode: TikTokPaymentMode) => {
     if (!order || updatingPaymentMode || nextMode === order.tiktokPaymentMode) {
       return;
+    }
+
+    if (nextMode === "EXTERNAL_PRODUCT_PAYMENT") {
+      const missingSnapshotItems = order.items.filter(
+        (item) =>
+          item.quantity > 0 &&
+          item.sellPrice === 0 &&
+          item.lineTotal === 0 &&
+          item.allocatedDiscount === null
+      );
+
+      if (missingSnapshotItems.length > 0) {
+        setTrackerPriceRecovery({
+          pricesByOrderItemId: Object.fromEntries(
+            missingSnapshotItems.map((item) => [
+              item.id,
+              item.product.sellPrice > 0
+                ? item.product.sellPrice.toFixed(2)
+                : "",
+            ])
+          ),
+        });
+        setTrackerPriceRecoveryError("");
+        return;
+      }
     }
 
     if (!order.tiktokPaymentMode) {
@@ -374,6 +425,44 @@ export default function OrderDetailScreen() {
         onPress: () => void applyHistoricalPaymentMode(nextMode),
       },
     ]);
+  };
+
+  const confirmTrackerPriceRecovery = () => {
+    if (!order || !trackerPriceRecovery || updatingPaymentMode) {
+      return;
+    }
+
+    const missingSnapshotItems = order.items.filter(
+      (item) =>
+        item.quantity > 0 &&
+        item.sellPrice === 0 &&
+        item.lineTotal === 0 &&
+        item.allocatedDiscount === null
+    );
+    const trackerPriceCorrections = missingSnapshotItems.map((item) => ({
+      orderItemId: item.id,
+      unitPrice: Number(
+        trackerPriceRecovery.pricesByOrderItemId[item.id]?.trim()
+      ),
+    }));
+
+    if (
+      trackerPriceCorrections.some(
+        (correction) =>
+          !Number.isFinite(correction.unitPrice) || correction.unitPrice <= 0
+      )
+    ) {
+      setTrackerPriceRecoveryError(
+        "Enter and confirm a unit price greater than RM0 for every item."
+      );
+      return;
+    }
+
+    setTrackerPriceRecoveryError("");
+    void applyHistoricalPaymentMode(
+      "EXTERNAL_PRODUCT_PAYMENT",
+      trackerPriceCorrections
+    );
   };
 
   const handleFinanceSync = async () => {
@@ -914,6 +1003,95 @@ export default function OrderDetailScreen() {
                   </Pressable>
                 ))}
               </View>
+
+              {trackerPriceRecovery ? (
+                <View style={styles.priceRecoveryPanel}>
+                  <Text style={styles.priceRecoveryTitle}>
+                    Tracker price information is missing for this order.
+                  </Text>
+                  <Text style={styles.priceRecoveryDescription}>
+                    Confirm the product prices before changing the payment
+                    method. Current tracker prices are suggestions only because
+                    the historical prices were not saved.
+                  </Text>
+
+                  {order.items
+                    .filter(
+                      (item) =>
+                        item.quantity > 0 &&
+                        item.sellPrice === 0 &&
+                        item.lineTotal === 0 &&
+                        item.allocatedDiscount === null
+                    )
+                    .map((item) => (
+                      <View key={item.id} style={styles.priceRecoveryItem}>
+                        <Text style={styles.itemName}>{item.product.name}</Text>
+                        <Text style={styles.selectedItemMeta}>
+                          Quantity: {item.quantity}
+                        </Text>
+                        <Text style={styles.selectedItemMeta}>
+                          Suggested current tracker price: RM{" "}
+                          {item.product.sellPrice.toFixed(2)}
+                        </Text>
+                        <Text style={styles.label}>Confirmed unit price (RM)</Text>
+                        <TextInput
+                          style={styles.searchInput}
+                          value={
+                            trackerPriceRecovery.pricesByOrderItemId[item.id] ??
+                            ""
+                          }
+                          onChangeText={(value) => {
+                            setTrackerPriceRecovery((current) =>
+                              current
+                                ? {
+                                    pricesByOrderItemId: {
+                                      ...current.pricesByOrderItemId,
+                                      [item.id]: value,
+                                    },
+                                  }
+                                : current
+                            );
+                            setTrackerPriceRecoveryError("");
+                          }}
+                          keyboardType="decimal-pad"
+                          accessibilityLabel={`Confirmed tracker unit price for ${item.product.name}`}
+                        />
+                      </View>
+                    ))}
+
+                  <FieldError message={trackerPriceRecoveryError} />
+                  <View style={styles.priceRecoveryActions}>
+                    <Pressable
+                      style={styles.recoveryCancelButton}
+                      onPress={() => {
+                        setTrackerPriceRecovery(null);
+                        setTrackerPriceRecoveryError("");
+                      }}
+                      disabled={updatingPaymentMode}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.recoveryCancelButtonText}>Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.recoveryConfirmButton,
+                        updatingPaymentMode && styles.disabledButton,
+                      ]}
+                      onPress={confirmTrackerPriceRecovery}
+                      disabled={updatingPaymentMode}
+                      accessibilityRole="button"
+                      accessibilityState={{
+                        disabled: updatingPaymentMode,
+                        busy: updatingPaymentMode,
+                      }}
+                    >
+                      <Text style={styles.recoveryConfirmButtonText}>
+                        Confirm Prices & Change
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
             </View>
           ) : null}
 
@@ -1435,14 +1613,24 @@ export default function OrderDetailScreen() {
               <Text style={styles.summaryValue}>{totalSelectedUnits}</Text>
             </View>
             {paymentMode === "FULL_TIKTOK" ? (
-              <View style={[styles.summaryRow, styles.estimatedTotalRow]}>
-                <Text style={styles.estimatedTotalLabel}>
-                  Historical product cost
-                </Text>
-                <Text style={styles.estimatedTotalValue}>
-                  RM {estimatedHistoricalCost.toFixed(2)}
-                </Text>
-              </View>
+              <>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>
+                    Tracker line value (reference)
+                  </Text>
+                  <Text style={styles.summaryValue}>
+                    RM {estimatedSubtotal.toFixed(2)}
+                  </Text>
+                </View>
+                <View style={[styles.summaryRow, styles.estimatedTotalRow]}>
+                  <Text style={styles.estimatedTotalLabel}>
+                    Historical product cost
+                  </Text>
+                  <Text style={styles.estimatedTotalValue}>
+                    RM {estimatedHistoricalCost.toFixed(2)}
+                  </Text>
+                </View>
+              </>
             ) : (
               <>
                 <View style={styles.summaryRow}>
@@ -1500,6 +1688,13 @@ export default function OrderDetailScreen() {
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Items</Text>
 
+        {order.tiktokPaymentMode === "FULL_TIKTOK" ? (
+          <Text style={styles.financeNote}>
+            Tracker prices and line values are historical references. TikTok
+            settlement, not these values, determines final revenue and profit.
+          </Text>
+        ) : null}
+
         {order.items.length === 0 ? (
           <Text style={styles.emptyText}>No order items yet.</Text>
         ) : (
@@ -1520,6 +1715,26 @@ export default function OrderDetailScreen() {
 
               {order.tiktokPaymentMode === "FULL_TIKTOK" ? (
                 <>
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Tracker Price</Text>
+                    <Text style={styles.infoValue}>
+                      {item.sellPrice === 0 &&
+                      item.lineTotal === 0 &&
+                      item.allocatedDiscount === null
+                        ? "Missing — confirmation required"
+                        : `RM ${item.sellPrice.toFixed(2)}`}
+                    </Text>
+                  </View>
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Tracker Line Value</Text>
+                    <Text style={styles.infoValue}>
+                      {item.sellPrice === 0 &&
+                      item.lineTotal === 0 &&
+                      item.allocatedDiscount === null
+                        ? "Missing — confirmation required"
+                        : `RM ${item.lineTotal.toFixed(2)}`}
+                    </Text>
+                  </View>
                   <View style={styles.infoRow}>
                     <Text style={styles.infoLabel}>Historical Unit Cost</Text>
                     <Text style={styles.infoValue}>
@@ -1732,6 +1947,68 @@ const styles = StyleSheet.create({
     borderColor: UI.colors.border,
     marginBottom: 14,
     paddingVertical: 12,
+  },
+  priceRecoveryPanel: {
+    backgroundColor: UI.colors.warningSoft,
+    borderWidth: 1,
+    borderColor: UI.colors.warning,
+    borderRadius: UI.radius.small,
+    marginTop: 12,
+    padding: 12,
+  },
+  priceRecoveryTitle: {
+    color: UI.colors.ink,
+    fontSize: 14,
+    fontWeight: "900",
+    marginBottom: 6,
+  },
+  priceRecoveryDescription: {
+    color: UI.colors.inkMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  priceRecoveryItem: {
+    backgroundColor: UI.colors.surface,
+    borderRadius: UI.radius.small,
+    marginBottom: 10,
+    padding: 10,
+  },
+  priceRecoveryActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 4,
+  },
+  recoveryCancelButton: {
+    backgroundColor: UI.colors.surface,
+    borderWidth: 1,
+    borderColor: UI.colors.borderStrong,
+    borderRadius: UI.radius.small,
+    flexGrow: 1,
+    minHeight: UI.control.minTouchTarget,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 10,
+  },
+  recoveryCancelButtonText: {
+    color: UI.colors.ink,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  recoveryConfirmButton: {
+    backgroundColor: UI.colors.ink,
+    borderRadius: UI.radius.small,
+    flexGrow: 2,
+    minHeight: UI.control.minTouchTarget,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 10,
+  },
+  recoveryConfirmButtonText: {
+    color: UI.colors.onDark,
+    fontSize: 12,
+    fontWeight: "900",
   },
   controlLabel: {
     color: UI.colors.ink,

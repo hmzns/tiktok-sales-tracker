@@ -114,8 +114,12 @@ export const editOrderStatus = async (req: Request, res: Response) => {
 // PATCH /orders/:id/tiktok-payment-mode
 export const editTikTokPaymentMode = async (req: Request, res: Response) => {
   const id = req.params.id as string;
-  const { paymentMode } = req.body;
-  const order = await updateTikTokPaymentMode(id, paymentMode);
+  const { paymentMode, trackerPriceCorrections } = req.body;
+  const order = await updateTikTokPaymentMode(
+    id,
+    paymentMode,
+    trackerPriceCorrections
+  );
 
   return res.json({
     success: true,
