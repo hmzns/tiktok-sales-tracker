@@ -9,6 +9,8 @@ export type MonthlyReportSummary = {
   totalOrders: number;
   totalItemsSold: number;
   averageOrderValue: number;
+  pendingFinanceOrderCount: number;
+  financiallyRecognizedOrderCount: number;
 };
 
 export type ProductSummary = {
@@ -20,6 +22,8 @@ export type ProductSummary = {
   revenue: number;
   cost: number;
   profit: number;
+  financeExcludedOrderCount: number;
+  financeExcludedUnits: number;
 };
 
 export type ProductPerformanceRow = {
@@ -35,10 +39,13 @@ export type ProductPerformanceRow = {
   averageSellingPrice: number;
   grossProfit: number;
   profitMargin: number | null;
+  financeExcludedOrderCount: number;
+  financeExcludedUnits: number;
 };
 
 export type ProductPerformance = {
   profitAccuracy: "HISTORICAL_ORDER_ITEM_COST";
+  financeAllocation: "FULL_TIKTOK_ORDER_FINANCE_EXCLUDED_FROM_PRODUCT_METRICS";
   summary: {
     productCount: number;
     unitsSold: number;
@@ -46,6 +53,8 @@ export type ProductPerformance = {
     discountAmount: number;
     netRevenue: number;
     grossProfit: number;
+    financeExcludedOrderCount: number;
+    financeExcludedUnits: number;
   };
   highlights: {
     bestSellingProduct: {
@@ -76,8 +85,9 @@ export type ReportOrderRow = {
   status: string;
   customerName: string | null;
   date: string;
-  total: number;
-  profit: number;
+  total: number | null;
+  profit: number | null;
+  financePending: boolean;
 };
 
 export type MonthlyReport = {
@@ -107,12 +117,14 @@ export type SalesTrendDay = {
   grossProfit: number;
   expenses: number;
   netProfit: number;
+  pendingFinanceOrderCount: number;
 };
 
 export type SalesTrendsReport = {
   reportType: "SALES_TRENDS_REPORT";
   timezone: "Asia/Kuching";
   profitAccuracy: "HISTORICAL_ORDER_ITEM_COST";
+  financeAccounting: "TIKTOK_SETTLEMENT_RECOGNIZED_AT_ORDER_LEVEL";
   period: {
     startDate: string;
     endDate: string;

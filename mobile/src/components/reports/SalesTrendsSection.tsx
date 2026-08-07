@@ -252,6 +252,14 @@ export function SalesTrendsSection({
           Revenue excludes allocated discounts. Profit uses historical item cost;
           daily net profit also deducts expenses stored on that date.
         </Text>
+        {report.summary.pendingFinanceOrderCount > 0 ? (
+          <Text style={styles.accuracyText}>
+            {report.summary.pendingFinanceOrderCount} FULL_TIKTOK
+            {report.summary.pendingFinanceOrderCount === 1
+              ? " order is"
+              : " orders are"} excluded from financial totals while settlement is pending.
+          </Text>
+        ) : null}
       </View>
 
       {report.summary.orderCount === 0 ? (

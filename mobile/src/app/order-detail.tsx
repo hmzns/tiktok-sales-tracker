@@ -18,6 +18,9 @@ import {
   getOrderById,
   OrderStatus,
   SalesOrder,
+  syncTikTokFinance,
+  TikTokPaymentMode,
+  updateTikTokPaymentMode as saveTikTokPaymentMode,
   updateOrderStatus,
 } from "../api/orders";
 import { getProducts, Product } from "../api/products";
@@ -35,6 +38,13 @@ import {
   DISCOUNT_OPTIONS,
   DiscountType,
 } from "../utils/orderDiscount";
+import {
+  formatFinanceMoney,
+  formatTikTokFinanceStatus,
+  getTikTokPaymentModeLabel,
+  getTrackerProductRevenue,
+  TIKTOK_PAYMENT_MODE_OPTIONS,
+} from "../utils/tiktokFinance";
 
 type SelectedImportedOrderItem = {
   productId: string;
@@ -43,6 +53,7 @@ type SelectedImportedOrderItem = {
   quantity: number;
   stock: number;
   sellPrice: number;
+  costPrice: number;
 };
 
 type ApiError = {
@@ -142,6 +153,15 @@ const getOrderStatusTone = (status: OrderStatus): StatusTone => {
   return "warning";
 };
 
+const getFinanceStatusTone = (
+  status: SalesOrder["financeStatus"]
+): StatusTone => {
+  if (status === "SETTLED") return "success";
+  if (status === "PENDING") return "warning";
+  if (status === "ERROR" || status === "UNAVAILABLE") return "danger";
+  return "neutral";
+};
+
 const formatStatusLabel = (status: string) =>
   status
     .replaceAll("_", " ")
@@ -167,12 +187,20 @@ export default function OrderDetailScreen() {
   >([]);
   const [discountType, setDiscountType] = useState<DiscountType>("NONE");
   const [discountValue, setDiscountValue] = useState("0");
+  const [paymentMode, setPaymentMode] = useState<TikTokPaymentMode | null>(null);
   const [fieldErrors, setFieldErrors] = useState({
     product: "",
     selectedItems: "",
+    paymentMode: "",
   });
   const [completionError, setCompletionError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [updatingPaymentMode, setUpdatingPaymentMode] = useState(false);
+  const [syncingFinance, setSyncingFinance] = useState(false);
+  const [financeMessage, setFinanceMessage] = useState<{
+    tone: "success" | "warning" | "danger";
+    text: string;
+  } | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [completionActionObscuresFloating, setCompletionActionObscuresFloating] =
     useState(false);
@@ -194,6 +222,7 @@ export default function OrderDetailScreen() {
 
       const result = await getOrderById(orderId);
       setOrder(result);
+      setPaymentMode(result.tiktokPaymentMode);
 
       if (
         result.source === "TIKTOK" &&
@@ -297,6 +326,86 @@ export default function OrderDetailScreen() {
     );
   };
 
+  const applyHistoricalPaymentMode = async (nextMode: TikTokPaymentMode) => {
+    if (!orderId) return;
+
+    try {
+      setUpdatingPaymentMode(true);
+      const updatedOrder = await saveTikTokPaymentMode(orderId, nextMode);
+      setOrder(updatedOrder);
+      setPaymentMode(updatedOrder.tiktokPaymentMode);
+      setFinanceMessage(null);
+      showSuccessMessage("TikTok payment method updated.");
+    } catch {
+      Alert.alert(
+        "Update failed",
+        "Unable to update the TikTok payment method. Please try again."
+      );
+    } finally {
+      setUpdatingPaymentMode(false);
+    }
+  };
+
+  const handleHistoricalPaymentMode = (nextMode: TikTokPaymentMode) => {
+    if (!order || updatingPaymentMode || nextMode === order.tiktokPaymentMode) {
+      return;
+    }
+
+    if (!order.tiktokPaymentMode) {
+      void applyHistoricalPaymentMode(nextMode);
+      return;
+    }
+
+    const message = `Change product payment from ${getTikTokPaymentModeLabel(
+      order.tiktokPaymentMode
+    )} to ${getTikTokPaymentModeLabel(nextMode)}? This will not change stock, items, discounts, or totals.`;
+
+    if (Platform.OS === "web") {
+      if (window.confirm(message)) {
+        void applyHistoricalPaymentMode(nextMode);
+      }
+      return;
+    }
+
+    Alert.alert("Change Payment Method", message, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Change",
+        onPress: () => void applyHistoricalPaymentMode(nextMode),
+      },
+    ]);
+  };
+
+  const handleFinanceSync = async () => {
+    if (!orderId || syncingFinance) return;
+
+    try {
+      setSyncingFinance(true);
+      setFinanceMessage(null);
+      const result = await syncTikTokFinance(orderId);
+      await loadOrder(false);
+
+      if (result.financeStatus === "PENDING") {
+        setFinanceMessage({
+          tone: "warning",
+          text: "TikTok settlement is not available yet.",
+        });
+      } else {
+        setFinanceMessage({
+          tone: "success",
+          text: "TikTok finance data updated.",
+        });
+      }
+    } catch {
+      setFinanceMessage({
+        tone: "danger",
+        text: "Unable to retrieve TikTok finance data. Please try again later.",
+      });
+    } finally {
+      setSyncingFinance(false);
+    }
+  };
+
   // Refresh when returning from another route so status changes stay current.
   useFocusEffect(
     useCallback(() => {
@@ -379,6 +488,10 @@ export default function OrderDetailScreen() {
     },
     0
   );
+  const estimatedHistoricalCost = selectedItems.reduce(
+    (total, item) => total + item.costPrice * item.quantity,
+    0
+  );
   const discountPreview = calculateOrderDiscountPreview({
     subtotal: estimatedSubtotal,
     shippingFee: order?.shippingFee ?? 0,
@@ -386,9 +499,10 @@ export default function OrderDetailScreen() {
     value: discountValue,
   });
   const completionDisabled =
+    !paymentMode ||
     selectedItems.length === 0 ||
     hasInvalidSelection ||
-    !discountPreview.isValid ||
+    (paymentMode !== "FULL_TIKTOK" && !discountPreview.isValid) ||
     submitting;
 
   const handleAddProduct = (product: Product) => {
@@ -428,10 +542,11 @@ export default function OrderDetailScreen() {
               quantity: 1,
               stock: product.stock,
               sellPrice: product.sellPrice,
+              costPrice: product.costPrice,
             },
           ]
     );
-    setFieldErrors({ product: "", selectedItems: "" });
+    setFieldErrors({ product: "", selectedItems: "", paymentMode: "" });
     setCompletionError("");
   };
 
@@ -477,12 +592,14 @@ export default function OrderDetailScreen() {
     }
 
     if (
+      !paymentMode ||
       selectedItems.length === 0 ||
       hasInvalidSelection ||
-      !discountPreview.isValid
+      (paymentMode !== "FULL_TIKTOK" && !discountPreview.isValid)
     ) {
       setFieldErrors((current) => ({
         ...current,
+        paymentMode: paymentMode ? "" : "Choose how the product was paid.",
         selectedItems:
           selectedItems.length === 0
             ? "Please add at least one item to complete the order."
@@ -504,10 +621,14 @@ export default function OrderDetailScreen() {
       const completedOrder = await completeImportedOrder(
         orderId,
         {
-          discount: {
-            type: discountType,
-            value: discountPreview.enteredValue,
-          },
+          paymentMode,
+          discount:
+            paymentMode === "FULL_TIKTOK"
+              ? { type: "NONE", value: 0 }
+              : {
+                  type: discountType,
+                  value: discountPreview.enteredValue,
+                },
           items: selectedItems.map((item) => ({
             productId: item.productId,
             quantity: item.quantity,
@@ -533,8 +654,9 @@ export default function OrderDetailScreen() {
       setSelectedItems([]);
       setDiscountType("NONE");
       setDiscountValue("0");
+      setPaymentMode(latestCompletedOrder.tiktokPaymentMode);
       setProductSearch("");
-      setFieldErrors({ product: "", selectedItems: "" });
+      setFieldErrors({ product: "", selectedItems: "", paymentMode: "" });
 
       showSuccessMessage("Imported order completed successfully.");
 
@@ -575,9 +697,10 @@ export default function OrderDetailScreen() {
       return;
     }
 
-    const confirmationMessage = buildCompletionConfirmationMessage(
-      discountPreview.finalTotal
-    );
+    const confirmationMessage =
+      paymentMode === "FULL_TIKTOK"
+        ? "Complete this inventory match and deduct the selected quantities from stock? Profit will remain pending until TikTok settlement is available."
+        : buildCompletionConfirmationMessage(discountPreview.finalTotal);
 
     confirmationOpenRef.current = true;
 
@@ -649,6 +772,15 @@ export default function OrderDetailScreen() {
   const canRefund =
     order.status !== "CANCELLED" &&
     order.status !== "REFUNDED";
+  const canSyncFinance =
+    order.source === "TIKTOK" &&
+    Boolean(order.tiktokOrderId) &&
+    order.status !== "NEEDS_ITEMS" &&
+    Boolean(order.tiktokPaymentMode);
+  const historicalProductCost = order.items.reduce(
+    (sum, item) => sum + item.costPrice * item.quantity,
+    0
+  );
 
   return (
     <View style={styles.screenShell}>
@@ -733,12 +865,280 @@ export default function OrderDetailScreen() {
         </View>
       </View>
 
+      {order.source === "TIKTOK" ? (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>TikTok Finance</Text>
+
+          <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
+            <Text style={styles.infoLabel}>Product Payment</Text>
+            <Text style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}>
+              {getTikTokPaymentModeLabel(order.tiktokPaymentMode)}
+            </Text>
+          </View>
+
+          {!canCompleteImportedOrder ? (
+            <View style={styles.paymentModeControl}>
+              <Text style={styles.controlLabel}>
+                {order.tiktokPaymentMode
+                  ? "Correct payment method"
+                  : "Assign payment method"}
+              </Text>
+              <View style={styles.paymentModeOptions}>
+                {TIKTOK_PAYMENT_MODE_OPTIONS.map((option) => (
+                  <Pressable
+                    key={option.value}
+                    style={[
+                      styles.paymentModeOption,
+                      order.tiktokPaymentMode === option.value &&
+                        styles.paymentModeOptionActive,
+                      updatingPaymentMode && styles.disabledButton,
+                    ]}
+                    onPress={() => handleHistoricalPaymentMode(option.value)}
+                    disabled={updatingPaymentMode}
+                    accessibilityRole="button"
+                    accessibilityState={{
+                      selected: order.tiktokPaymentMode === option.value,
+                      disabled: updatingPaymentMode,
+                      busy: updatingPaymentMode,
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.paymentModeOptionText,
+                        order.tiktokPaymentMode === option.value &&
+                          styles.paymentModeOptionTextActive,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {order.buyerShippingFee !== null ? (
+            <>
+              <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
+                <Text style={styles.infoLabel}>Buyer Shipping Fee</Text>
+                <Text style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}>
+                  {formatFinanceMoney(
+                    order.buyerShippingFee,
+                    order.financeCurrency
+                  )}
+                </Text>
+              </View>
+              <Text style={styles.financeNote}>
+                TikTok checkout information only. This is not treated as seller
+                revenue or profit.
+              </Text>
+            </>
+          ) : null}
+
+          <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
+            <Text style={styles.infoLabel}>Finance Status</Text>
+            <StatusBadge
+              label={formatTikTokFinanceStatus(order.financeStatus)}
+              tone={getFinanceStatusTone(order.financeStatus)}
+            />
+          </View>
+
+          {order.tiktokPaymentMode === "FULL_TIKTOK" &&
+          order.tiktokRevenueAmount !== null ? (
+            <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
+              <Text style={styles.infoLabel}>TikTok Revenue</Text>
+              <Text style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}>
+                {formatFinanceMoney(
+                  order.tiktokRevenueAmount,
+                  order.financeCurrency
+                )}
+              </Text>
+            </View>
+          ) : null}
+
+          {order.tiktokPaymentMode === "EXTERNAL_PRODUCT_PAYMENT" ? (
+            <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
+              <Text style={styles.infoLabel}>Tracker Product Revenue</Text>
+              <Text style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}>
+                {formatFinanceMoney(
+                  getTrackerProductRevenue(order.subtotal, order.discount),
+                  "MYR"
+                )}
+              </Text>
+            </View>
+          ) : null}
+
+          {order.tiktokShippingCostAmount !== null ? (
+            <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
+              <Text style={styles.infoLabel}>
+                {order.tiktokPaymentMode === "FULL_TIKTOK"
+                  ? "TikTok Shipping"
+                  : "TikTok Shipping Settlement (reference)"}
+              </Text>
+              <Text style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}>
+                {formatFinanceMoney(
+                  order.tiktokShippingCostAmount,
+                  order.financeCurrency,
+                  true
+                )}
+              </Text>
+            </View>
+          ) : null}
+
+          {order.tiktokPaymentMode === "FULL_TIKTOK" &&
+          order.tiktokFeeAndTaxAmount !== null ? (
+            <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
+              <Text style={styles.infoLabel}>TikTok Fees &amp; Tax</Text>
+              <Text style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}>
+                {formatFinanceMoney(
+                  order.tiktokFeeAndTaxAmount,
+                  order.financeCurrency,
+                  true
+                )}
+              </Text>
+            </View>
+          ) : null}
+
+          {order.tiktokSettlementAmount !== null ? (
+            <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
+              <Text style={styles.infoLabel}>TikTok Settlement</Text>
+              <Text style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}>
+                {formatFinanceMoney(
+                  order.tiktokSettlementAmount,
+                  order.financeCurrency
+                )}
+              </Text>
+            </View>
+          ) : null}
+
+          {order.tiktokPaymentMode ? (
+            <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
+              <Text style={styles.infoLabel}>Historical Product Cost</Text>
+              <Text style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}>
+                {formatFinanceMoney(historicalProductCost, "MYR")}
+              </Text>
+            </View>
+          ) : null}
+
+          {order.tiktokPaymentMode ? (
+            <View style={[styles.infoRow, isSmallScreen && styles.smallInfoRow]}>
+              <Text style={styles.infoLabel}>
+                {order.tiktokPaymentMode === "EXTERNAL_PRODUCT_PAYMENT" &&
+                order.financeStatus !== "SETTLED"
+                  ? "Tracker Profit (before TikTok settlement)"
+                  : "Final Profit"}
+              </Text>
+              <Text style={[styles.infoValue, isSmallScreen && styles.smallInfoValue]}>
+                {order.profit === null
+                  ? "Pending TikTok settlement"
+                  : formatFinanceMoney(order.profit, order.financeCurrency)}
+              </Text>
+            </View>
+          ) : null}
+
+          {order.tiktokPaymentMode === "FULL_TIKTOK" ? (
+            <Text style={styles.financeNote}>
+              Final Profit = TikTok Settlement - Historical Product Cost.
+              Shipping, fees, and tax are breakdown values and are not deducted
+              again.
+            </Text>
+          ) : order.tiktokPaymentMode === "EXTERNAL_PRODUCT_PAYMENT" ? (
+            <Text style={styles.financeNote}>
+              Final Profit = Tracker Product Revenue + TikTok Settlement -
+              Historical Product Cost. Shipping and fees are not added or
+              subtracted again.
+            </Text>
+          ) : (
+            <Text style={styles.financeNote}>
+              Assign a payment method before synchronizing Finance data.
+            </Text>
+          )}
+
+          {financeMessage ? (
+            <View
+              accessibilityRole="alert"
+              style={[
+                styles.financeMessage,
+                financeMessage.tone === "success" && styles.financeMessageSuccess,
+                financeMessage.tone === "warning" && styles.financeMessageWarning,
+                financeMessage.tone === "danger" && styles.financeMessageDanger,
+              ]}
+            >
+              <Text style={styles.financeMessageText}>{financeMessage.text}</Text>
+            </View>
+          ) : null}
+
+          {canSyncFinance ? (
+            <Pressable
+              style={[
+                styles.financeSyncButton,
+                syncingFinance && styles.disabledButton,
+              ]}
+              onPress={() => void handleFinanceSync()}
+              disabled={syncingFinance}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: syncingFinance, busy: syncingFinance }}
+            >
+              {syncingFinance ? (
+                <View style={styles.submittingContent}>
+                  <ActivityIndicator color={UI.colors.onDark} size="small" />
+                  <Text style={styles.financeSyncButtonText}>Syncing...</Text>
+                </View>
+              ) : (
+                <Text style={styles.financeSyncButtonText}>Sync TikTok Finance</Text>
+              )}
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+
       {canCompleteImportedOrder ? (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Complete Imported Order</Text>
           <Text style={styles.sectionDescription}>
             Match this TikTok order with one or more local products.
           </Text>
+
+          <View style={styles.paymentModeSection}>
+            <Text style={styles.selectedItemsTitle}>Payment Method</Text>
+            <View style={styles.paymentModeOptions}>
+              {TIKTOK_PAYMENT_MODE_OPTIONS.map((option) => (
+                <Pressable
+                  key={option.value}
+                  style={[
+                    styles.paymentModeOption,
+                    paymentMode === option.value &&
+                      styles.paymentModeOptionActive,
+                  ]}
+                  onPress={() => {
+                    setPaymentMode(option.value);
+                    if (option.value === "FULL_TIKTOK") {
+                      setDiscountType("NONE");
+                      setDiscountValue("0");
+                    }
+                    setFieldErrors((current) => ({
+                      ...current,
+                      paymentMode: "",
+                    }));
+                    setCompletionError("");
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: paymentMode === option.value }}
+                >
+                  <Text
+                    style={[
+                      styles.paymentModeOptionText,
+                      paymentMode === option.value &&
+                        styles.paymentModeOptionTextActive,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <FieldError message={fieldErrors.paymentMode} />
+          </View>
 
           <Text style={styles.label}>Search products</Text>
           <TextInput
@@ -837,9 +1237,15 @@ export default function OrderDetailScreen() {
                       <Text style={[styles.productMeta, isSmallScreen && styles.compactProductMeta]}>
                         Stock: {product.stock}
                       </Text>
-                      <Text style={[styles.productMeta, isSmallScreen && styles.compactProductMeta]}>
-                        RM {product.sellPrice.toFixed(2)}
-                      </Text>
+                      {paymentMode !== "FULL_TIKTOK" ? (
+                        <Text style={[styles.productMeta, isSmallScreen && styles.compactProductMeta]}>
+                          RM {product.sellPrice.toFixed(2)}
+                        </Text>
+                      ) : (
+                        <Text style={[styles.productMeta, isSmallScreen && styles.compactProductMeta]}>
+                          Cost: RM {product.costPrice.toFixed(2)}
+                        </Text>
+                      )}
                     </View>
                     <Text
                       style={[
@@ -948,6 +1354,7 @@ export default function OrderDetailScreen() {
             )}
           </View>
 
+          {paymentMode !== "FULL_TIKTOK" ? (
           <View style={styles.discountSection}>
             <Text style={styles.selectedItemsTitle}>Discount</Text>
             <View style={styles.discountOptions}>
@@ -1011,6 +1418,12 @@ export default function OrderDetailScreen() {
             ) : null}
             <FieldError message={discountPreview.error} />
           </View>
+          ) : (
+            <Text style={styles.financeNote}>
+              TikTok checkout pricing and discounts will come from TikTok
+              Finance. No tracker discount is applied.
+            </Text>
+          )}
 
           <View style={styles.selectedSummary}>
             <View style={styles.summaryRow}>
@@ -1021,24 +1434,37 @@ export default function OrderDetailScreen() {
               <Text style={styles.summaryLabel}>Total units</Text>
               <Text style={styles.summaryValue}>{totalSelectedUnits}</Text>
             </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Subtotal</Text>
-              <Text style={styles.summaryValue}>
-                RM {discountPreview.subtotal.toFixed(2)}
-              </Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Discount</Text>
-              <Text style={styles.summaryValue}>
-                RM {discountPreview.discountAmount.toFixed(2)}
-              </Text>
-            </View>
-            <View style={[styles.summaryRow, styles.estimatedTotalRow]}>
-              <Text style={styles.estimatedTotalLabel}>Final total</Text>
-              <Text style={styles.estimatedTotalValue}>
-                RM {discountPreview.finalTotal.toFixed(2)}
-              </Text>
-            </View>
+            {paymentMode === "FULL_TIKTOK" ? (
+              <View style={[styles.summaryRow, styles.estimatedTotalRow]}>
+                <Text style={styles.estimatedTotalLabel}>
+                  Historical product cost
+                </Text>
+                <Text style={styles.estimatedTotalValue}>
+                  RM {estimatedHistoricalCost.toFixed(2)}
+                </Text>
+              </View>
+            ) : (
+              <>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Subtotal</Text>
+                  <Text style={styles.summaryValue}>
+                    RM {discountPreview.subtotal.toFixed(2)}
+                  </Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Discount</Text>
+                  <Text style={styles.summaryValue}>
+                    RM {discountPreview.discountAmount.toFixed(2)}
+                  </Text>
+                </View>
+                <View style={[styles.summaryRow, styles.estimatedTotalRow]}>
+                  <Text style={styles.estimatedTotalLabel}>Final total</Text>
+                  <Text style={styles.estimatedTotalValue}>
+                    RM {discountPreview.finalTotal.toFixed(2)}
+                  </Text>
+                </View>
+              </>
+            )}
           </View>
 
           <View
@@ -1092,49 +1518,65 @@ export default function OrderDetailScreen() {
                 <Text style={styles.infoValue}>{item.quantity}</Text>
               </View>
 
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Sell Price</Text>
-                <Text style={styles.infoValue}>
-                  RM {item.sellPrice.toFixed(2)}
-                </Text>
-              </View>
-
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Gross Line Revenue</Text>
-                <Text style={styles.infoValue}>
-                  RM {item.lineTotal.toFixed(2)}
-                </Text>
-              </View>
-
-              {item.allocatedDiscount !== null ? (
+              {order.tiktokPaymentMode === "FULL_TIKTOK" ? (
                 <>
                   <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Allocated Discount</Text>
+                    <Text style={styles.infoLabel}>Historical Unit Cost</Text>
                     <Text style={styles.infoValue}>
-                      RM {item.allocatedDiscount.toFixed(2)}
+                      RM {item.costPrice.toFixed(2)}
                     </Text>
                   </View>
-
                   <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Net Line Revenue</Text>
+                    <Text style={styles.infoLabel}>Historical Line Cost</Text>
                     <Text style={styles.infoValue}>
-                      RM {(item.lineTotal - item.allocatedDiscount).toFixed(2)}
+                      RM {item.lineCost.toFixed(2)}
                     </Text>
                   </View>
                 </>
-              ) : null}
-
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Line Profit</Text>
-                <Text style={styles.infoValue}>
-                  RM {item.lineProfit.toFixed(2)}
-                </Text>
-              </View>
+              ) : (
+                <>
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Sell Price</Text>
+                    <Text style={styles.infoValue}>
+                      RM {item.sellPrice.toFixed(2)}
+                    </Text>
+                  </View>
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Gross Line Revenue</Text>
+                    <Text style={styles.infoValue}>
+                      RM {item.lineTotal.toFixed(2)}
+                    </Text>
+                  </View>
+                  {item.allocatedDiscount !== null ? (
+                    <>
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Allocated Discount</Text>
+                        <Text style={styles.infoValue}>
+                          RM {item.allocatedDiscount.toFixed(2)}
+                        </Text>
+                      </View>
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Net Line Revenue</Text>
+                        <Text style={styles.infoValue}>
+                          RM {(item.lineTotal - item.allocatedDiscount).toFixed(2)}
+                        </Text>
+                      </View>
+                    </>
+                  ) : null}
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Line Profit</Text>
+                    <Text style={styles.infoValue}>
+                      RM {item.lineProfit.toFixed(2)}
+                    </Text>
+                  </View>
+                </>
+              )}
             </View>
           ))
         )}
       </View>
 
+      {order.tiktokPaymentMode !== "FULL_TIKTOK" ? (
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Payment Summary</Text>
 
@@ -1173,10 +1615,13 @@ export default function OrderDetailScreen() {
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Profit</Text>
           <Text style={styles.profitValue}>
-            RM {order.profit.toFixed(2)}
+            {order.profit === null
+              ? "Pending"
+              : `RM ${order.profit.toFixed(2)}`}
           </Text>
         </View>
       </View>
+      ) : null}
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Order Actions</Text>
@@ -1274,6 +1719,100 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     marginTop: -6,
     marginBottom: 14,
+  },
+  paymentModeSection: {
+    borderBottomWidth: 1,
+    borderBottomColor: UI.colors.border,
+    marginBottom: 16,
+    paddingBottom: 16,
+  },
+  paymentModeControl: {
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: UI.colors.border,
+    marginBottom: 14,
+    paddingVertical: 12,
+  },
+  controlLabel: {
+    color: UI.colors.ink,
+    fontSize: 13,
+    fontWeight: "800",
+    marginBottom: 8,
+  },
+  paymentModeOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  paymentModeOption: {
+    flexGrow: 1,
+    flexBasis: 240,
+    minHeight: UI.control.minTouchTarget,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: UI.radius.small,
+    borderWidth: 1,
+    borderColor: UI.colors.borderStrong,
+    backgroundColor: UI.colors.surfaceMuted,
+  },
+  paymentModeOptionActive: {
+    backgroundColor: UI.colors.ink,
+    borderColor: UI.colors.ink,
+  },
+  paymentModeOptionText: {
+    color: UI.colors.ink,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17,
+  },
+  paymentModeOptionTextActive: {
+    color: UI.colors.onDark,
+  },
+  financeNote: {
+    color: UI.colors.inkMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: -2,
+    marginBottom: 14,
+  },
+  financeMessage: {
+    borderWidth: 1,
+    borderRadius: UI.radius.small,
+    padding: 10,
+    marginTop: 2,
+    marginBottom: 12,
+  },
+  financeMessageSuccess: {
+    backgroundColor: UI.colors.successSoft,
+    borderColor: UI.colors.success,
+  },
+  financeMessageWarning: {
+    backgroundColor: UI.colors.warningSoft,
+    borderColor: UI.colors.warning,
+  },
+  financeMessageDanger: {
+    backgroundColor: UI.colors.dangerSoft,
+    borderColor: UI.colors.danger,
+  },
+  financeMessageText: {
+    color: UI.colors.ink,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 18,
+  },
+  financeSyncButton: {
+    backgroundColor: UI.colors.ink,
+    borderRadius: UI.radius.small,
+    minHeight: 46,
+    padding: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  financeSyncButtonText: {
+    color: UI.colors.onDark,
+    fontWeight: "900",
+    fontSize: 14,
   },
   metadataGrid: {
     flexDirection: "row",

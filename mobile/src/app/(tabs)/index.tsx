@@ -24,6 +24,8 @@ type DashboardData = {
   orderCount: number;
   itemsSold: number;
   averageOrderValue: number;
+  pendingFinanceOrderCount: number;
+  financiallyRecognizedOrderCount: number;
   lowStockProducts: {
     id: string;
     name: string;
@@ -240,6 +242,18 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      {dashboard.pendingFinanceOrderCount > 0 ? (
+        <View style={styles.financePendingCard}>
+          <Text style={styles.financePendingText}>
+            {dashboard.pendingFinanceOrderCount} completed FULL_TIKTOK
+            {dashboard.pendingFinanceOrderCount === 1
+              ? " order is"
+              : " orders are"} excluded from financial totals while TikTok
+            settlement is pending. Orders and units are still counted.
+          </Text>
+        </View>
+      ) : null}
+
       <View style={styles.highlightSection}>
         <Text style={styles.sectionTitle}>Average Order Value</Text>
         <Text style={styles.sectionValue}>
@@ -326,6 +340,20 @@ const styles = StyleSheet.create({
     padding: UI.layout.screenPadding,
     paddingTop: 28,
     paddingBottom: 48,
+  },
+  financePendingCard: {
+    backgroundColor: UI.colors.warningSoft,
+    borderColor: UI.colors.warning,
+    borderWidth: 1,
+    borderRadius: UI.radius.small,
+    padding: 12,
+    marginBottom: 14,
+  },
+  financePendingText: {
+    color: UI.colors.ink,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 18,
   },
   pageHeader: {
     marginBottom: 22,

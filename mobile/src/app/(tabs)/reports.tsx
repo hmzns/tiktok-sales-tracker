@@ -662,6 +662,17 @@ export default function ReportsScreen() {
         </Text>
       </View>
 
+      {report.summary.pendingFinanceOrderCount > 0 ? (
+        <View style={styles.highlightSection}>
+          <Text style={styles.sectionTitle}>Pending TikTok Finance</Text>
+          <Text style={styles.itemSubtitle}>
+            {report.summary.pendingFinanceOrderCount} completed FULL_TIKTOK
+            {report.summary.pendingFinanceOrderCount === 1 ? " order is" : " orders are"}
+            excluded from revenue, cost, and profit totals until settlement.
+          </Text>
+        </View>
+      ) : null}
+
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Top Products</Text>
 
@@ -678,6 +689,12 @@ export default function ReportsScreen() {
                 <Text style={styles.itemSubtitle}>
                   Category: {product.category ?? "No category"}
                 </Text>
+                {product.financeExcludedUnits > 0 ? (
+                  <Text style={styles.itemSubtitle}>
+                    {product.financeExcludedUnits} FULL_TIKTOK units excluded
+                    from product-level financial allocation
+                  </Text>
+                ) : null}
               </View>
 
               <View style={styles.rightBox}>
@@ -714,10 +731,16 @@ export default function ReportsScreen() {
                 </Text>
               </View>
               <View style={styles.rightBox}>
-                <Text style={styles.moneyText}>{formatRM(order.total)}</Text>
-                <Text style={order.profit >= 0 ? styles.smallProfitText : styles.smallLossText}>
-                  Profit {formatRM(order.profit)}
+                <Text style={styles.moneyText}>
+                  {order.total === null ? "Finance pending" : formatRM(order.total)}
                 </Text>
+                {order.profit === null ? (
+                  <Text style={styles.itemSubtitle}>Profit pending TikTok settlement</Text>
+                ) : (
+                  <Text style={order.profit >= 0 ? styles.smallProfitText : styles.smallLossText}>
+                    Profit {formatRM(order.profit)}
+                  </Text>
+                )}
               </View>
             </View>
           ))
@@ -859,7 +882,9 @@ export default function ReportsScreen() {
           <Text style={styles.profitAccuracyText}>
             Discounts are allocated proportionally to gross line revenue. Gross
             profit uses historical item cost; shipping fees are not allocated to
-            products.
+            products. FULL_TIKTOK units remain in unit metrics, but their
+            order-level TikTok settlement is excluded from product financials
+            because no reliable SKU allocation exists.
           </Text>
         </View>
 

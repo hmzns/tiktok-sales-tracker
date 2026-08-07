@@ -19,6 +19,15 @@ export type OrderItem = {
 };
 
 export type OrderSource = "MANUAL" | "TIKTOK";
+export type TikTokPaymentMode =
+  | "FULL_TIKTOK"
+  | "EXTERNAL_PRODUCT_PAYMENT";
+export type TikTokFinanceStatus =
+  | "PENDING"
+  | "SETTLED"
+  | "UNAVAILABLE"
+  | "ERROR";
+export type ApiMoney = number | string;
 
 export type SalesOrder = {
   id: string;
@@ -27,6 +36,15 @@ export type SalesOrder = {
   source: OrderSource;
   stockProcessed: boolean;
   importedAt: string | null;
+  tiktokPaymentMode: TikTokPaymentMode | null;
+  buyerShippingFee: ApiMoney | null;
+  financeStatus: TikTokFinanceStatus | null;
+  financeCurrency: string | null;
+  tiktokRevenueAmount: ApiMoney | null;
+  tiktokShippingCostAmount: ApiMoney | null;
+  tiktokFeeAndTaxAmount: ApiMoney | null;
+  tiktokSettlementAmount: ApiMoney | null;
+  financeSyncedAt: string | null;
   platform: string;
   status: OrderStatus;
   customerName: string | null;
@@ -37,7 +55,7 @@ export type SalesOrder = {
   shippingFee: number;
   total: number;
   totalCost: number;
-  profit: number;
+  profit: number | null;
   createdAt: string;
   updatedAt: string;
   items: OrderItem[];
@@ -231,6 +249,7 @@ export const getTikTokSyncHistory = async (
 export const completeImportedOrder = async (
   salesOrderId: string,
   data: {
+    paymentMode: TikTokPaymentMode;
     discount: OrderDiscountInput;
     items: {
       productId: string;
@@ -241,6 +260,30 @@ export const completeImportedOrder = async (
   const response = await apiClient.post(
     `/orders/${salesOrderId}/complete-import`,
     data,
+    { timeout: 30_000 }
+  );
+
+  return response.data.data;
+};
+
+export const updateTikTokPaymentMode = async (
+  salesOrderId: string,
+  paymentMode: TikTokPaymentMode
+): Promise<SalesOrder> => {
+  const response = await apiClient.patch(
+    `/orders/${salesOrderId}/tiktok-payment-mode`,
+    { paymentMode }
+  );
+
+  return response.data.data;
+};
+
+export const syncTikTokFinance = async (
+  salesOrderId: string
+): Promise<{ financeStatus: TikTokFinanceStatus }> => {
+  const response = await apiClient.post(
+    `/orders/${salesOrderId}/sync-tiktok-finance`,
+    undefined,
     { timeout: 30_000 }
   );
 

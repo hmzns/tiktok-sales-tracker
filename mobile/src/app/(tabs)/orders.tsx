@@ -491,8 +491,16 @@ export default function OrdersScreen() {
     });
 
     return matchingOrders.sort((a, b) => {
-      if (orderSort === "highest") return b.profit - a.profit;
-      if (orderSort === "lowest") return a.profit - b.profit;
+      if (orderSort === "highest") {
+        if (a.profit === null) return 1;
+        if (b.profit === null) return -1;
+        return b.profit - a.profit;
+      }
+      if (orderSort === "lowest") {
+        if (a.profit === null) return 1;
+        if (b.profit === null) return -1;
+        return a.profit - b.profit;
+      }
       if (orderSort === "newest") return compareNewestFirst(a, b);
       if (orderSort === "oldest") return compareOldestFirst(a, b);
       if (orderSort === "needs-attention") {
@@ -824,16 +832,27 @@ export default function OrdersScreen() {
 
               <View style={styles.infoRow}>
                 <Text style={styles.label}>Total</Text>
-                <Text style={styles.value}>{formatRM(order.total)}</Text>
+                <Text style={styles.value}>
+                  {order.tiktokPaymentMode === "FULL_TIKTOK"
+                    ? order.financeStatus === "SETTLED" &&
+                      order.tiktokSettlementAmount !== null
+                      ? formatRM(Number(order.tiktokSettlementAmount))
+                      : "Pending TikTok settlement"
+                    : formatRM(order.total)}
+                </Text>
               </View>
 
               <View style={styles.infoRow}>
                 <Text style={styles.label}>Profit</Text>
-                <Text
-                  style={order.profit >= 0 ? styles.profitText : styles.lossText}
-                >
-                  {formatRM(order.profit)}
-                </Text>
+                {order.profit === null ? (
+                  <Text style={styles.value}>Pending TikTok settlement</Text>
+                ) : (
+                  <Text
+                    style={order.profit >= 0 ? styles.profitText : styles.lossText}
+                  >
+                    {formatRM(order.profit)}
+                  </Text>
+                )}
               </View>
 
               <Pressable
