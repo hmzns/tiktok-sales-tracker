@@ -30,23 +30,115 @@ export const getDashboardSummary = async (filter: DashboardFilter) => {
     filter.month
   );
 
-  // Only item-confirmed, non-reversed orders contribute to sales metrics.
-  const orders = await prisma.salesOrder.findMany({
-    where: {
-      createdAt: {
-        gte: startDate,
-        lt: endDate,
+  // These reads are independent. Keep them parallel and select only the
+  // fields used below so imported metadata and unrelated customer data never
+  // become part of the dashboard query payload.
+  const [
+    orders,
+    expenses,
+    lowStockProducts,
+    stockMovements,
+    recentStockMovements,
+  ] = await Promise.all([
+    prisma.salesOrder.findMany({
+      where: {
+        createdAt: {
+          gte: startDate,
+          lt: endDate,
+        },
+        status: "COMPLETED",
       },
-      status: "COMPLETED",
-    },
-    include: {
-      items: {
-        include: {
-          product: true,
+      select: {
+        id: true,
+        source: true,
+        tiktokPaymentMode: true,
+        financeStatus: true,
+        tiktokSettlementAmount: true,
+        subtotal: true,
+        discount: true,
+        total: true,
+        totalCost: true,
+        profit: true,
+        createdAt: true,
+        items: {
+          select: {
+            productId: true,
+            quantity: true,
+            lineCost: true,
+            lineProfit: true,
+            costPrice: true,
+            product: {
+              select: {
+                name: true,
+                sku: true,
+              },
+            },
+          },
         },
       },
-    },
-  });
+    }),
+    prisma.expense.findMany({
+      where: {
+        expenseDate: {
+          gte: startDate,
+          lt: endDate,
+        },
+      },
+      select: {
+        amount: true,
+        category: true,
+      },
+    }),
+    prisma.product.findMany({
+      where: {
+        stock: {
+          lte: 5,
+        },
+        isActive: true,
+      },
+      orderBy: {
+        stock: "asc",
+      },
+      take: 5,
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        stock: true,
+      },
+    }),
+    prisma.stockMovement.findMany({
+      where: {
+        createdAt: {
+          gte: startDate,
+          lt: endDate,
+        },
+      },
+      select: {
+        type: true,
+        quantity: true,
+      },
+    }),
+    prisma.stockMovement.findMany({
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 5,
+      select: {
+        id: true,
+        type: true,
+        quantity: true,
+        stockBefore: true,
+        stockAfter: true,
+        product: {
+          select: {
+            name: true,
+            sku: true,
+          },
+        },
+      },
+    }),
+  ]);
 
   const accountingByOrderId = new Map(
     orders.map((order) => [
@@ -96,15 +188,6 @@ export const getDashboardSummary = async (filter: DashboardFilter) => {
     recognizedAccounting.length > 0
       ? revenue / recognizedAccounting.length
       : 0;
-
-  const expenses = await prisma.expense.findMany({
-    where: {
-      expenseDate: {
-        gte: startDate,
-        lt: endDate,
-      },
-    },
-  });
 
   const totalExpenses = expenses.reduce(
     (sum, expense) => sum + expense.amount,
@@ -203,38 +286,6 @@ for (const order of orders) {
   const topProducts = Array.from(productMap.values())
     .sort((a, b) => b.quantitySold - a.quantitySold)
     .slice(0, 5);
-
-  const lowStockProducts = await prisma.product.findMany({
-    where: {
-      stock: {
-        lte: 5,
-      },
-      isActive: true,
-    },
-    orderBy: {
-      stock: "asc",
-    },
-    take: 5,
-  });
-
-  const stockMovements = await prisma.stockMovement.findMany({
-  where: {
-    createdAt: {
-      gte: startDate,
-      lt: endDate,
-    },
-  },
-});
-
-const recentStockMovements = await prisma.stockMovement.findMany({
-  orderBy: {
-    createdAt: "desc",
-  },
-  take: 5,
-  include: {
-    product: true,
-  },
-});
 
 const stockSummary = {
   restocked: 0,

@@ -1,340 +1,69 @@
 # TikTok Sales Tracker API
 
-A backend API for managing small business sales, products, orders, expenses, stock movements, and monthly profit reports.
-This project is designed for a TikTok Live / TikTok Shop seller who wants to track sales and profit more easily instead of calculating everything manually.
+Express and Prisma API for the TikTok Sales Tracker v1.0.0 application.
 
-## Features
-
-* Product management
-* Product category management
-* Order management
-* Order status update
-* Automatic stock deduction when orders are created
-* Automatic stock restore when orders are cancelled or refunded
-* Expense tracking
-* Net profit calculation
-* Dashboard summary
-* Daily sales breakdown
-* Low stock alert
-* Stock movement history
-* Dashboard stock activity summary
-* Monthly sales report endpoint
-* Search, filter, and pagination
-* JSON API documentation endpoint
-* Clean JSON error response
-
-## Tech Stack
-
-* Node.js
-* Express.js
-* TypeScript
-* Prisma ORM
-* PostgreSQL
-* Supabase
-* Zod validation
-
-## Project Structure
-
-```text
-src/
-  controllers/
-  jobs/
-  lib/
-  middleware/
-  routes/
-  services/
-  utils/
-  validators/
-prisma/
-  schema.prisma
-```
-
-## Getting Started
-
-### 1. Install dependencies
+## Development
 
 ```bash
-npm install
-```
-
-### 2. Create environment file
-
-Copy `.env.example` to `.env`:
-
-```bash
+npm ci
 cp .env.example .env
-```
-
-Then update the database connection values inside `.env`.
-
-### 3. Run Prisma migration
-
-```bash
 npx prisma migrate dev
-```
-
-### 4. Generate Prisma Client
-
-```bash
-npx prisma generate
-```
-
-### 5. Start development server
-
-```bash
 npm run dev
 ```
 
-The API should run on:
+The default local URL is `http://localhost:3000`. `GET /health` is public. Every other route requires `x-api-key`, except the public TikTok OAuth callback at `GET /tiktok-shop/callback`.
 
-```text
-http://localhost:3000
-```
-
-## Health Check
-
-```http
-GET /health
-```
-
-Example response:
-
-```json
-{
-  "status": "ok",
-  "service": "sales-tracker-api"
-}
-```
-
-## API Documentation
-
-```http
-GET /api-docs
-```
-
-This endpoint returns a JSON list of available API endpoints.
-
-## One-shot TikTok order synchronization
-
-Build the backend, then run the standalone synchronization command from the
-`backend` directory:
+## Commands
 
 ```bash
-npm run build
-npm run sync:tiktok-orders
+npx prisma validate          # validate the schema
+npx prisma generate          # generate Prisma Client
+npx prisma migrate dev       # create/apply local development migrations
+npm run migrate:deploy       # apply committed migrations in production
+npm run build                # generate Prisma Client and compile TypeScript
+npm test                     # run backend regression tests
+npm start                    # run compiled API
+npm run sync:tiktok-orders   # run one standalone TikTok order sync
+npx prisma studio            # inspect a local/development database
 ```
 
-Configure the lookback window in `.env` (invalid or missing values safely
-default to 2 days):
+Do not run `prisma migrate reset` against production.
 
-```dotenv
-TIKTOK_AUTO_SYNC_DAYS=2
+## Environment
+
+See [`.env.example`](.env.example) for every variable read by the application. Core variables are `DATABASE_URL`, `APP_API_KEY`, and production `ALLOWED_ORIGINS`. TikTok integration also requires `TIKTOK_SHOP_APP_KEY`, `TIKTOK_SHOP_APP_SECRET`, `TIKTOK_SHOP_AUTHORIZATION_URL`, and `TIKTOK_TOKEN_ENCRYPTION_KEY`.
+
+Set `TZ=Asia/Kuching` so dashboard and report boundaries follow the business timezone. Keep the token-encryption key unchanged after authorization; changing it makes stored tokens unreadable and requires reauthorization.
+
+## Main routes
+
+- `/products` and `/product-categories`
+- `/stock-movements`
+- `/orders`, including import completion, payment-mode changes, and Finance sync
+- `/expenses`
+- `/dashboard/summary`
+- `/reports/monthly` and `/reports/sales-trends`
+- `/tiktok-shop/connect`, `/status`, `/refresh`, `/shop/sync`, `/orders/sync`, and `/sync-history`
+- `/api-docs` for the complete machine-readable route list
+
+Order and report responses omit `rawImportData`. TikTok tokens are encrypted using AES-256-GCM before storage, and API responses expose only safe connection metadata.
+
+## TikTok accounting
+
+- FULL_TIKTOK: settlement minus historical order-item COGS; pending settlement means null profit.
+- EXTERNAL_PRODUCT_PAYMENT: tracker net product revenue plus settlement minus historical order-item COGS.
+- Settlement breakdown fields are not added or deducted again.
+- Payment-mode switching preserves stock, items, snapshots, discounts, and Finance aggregates.
+
+## Production deployment
+
+Use the `backend` directory as the Render service root.
+
+```text
+Build:       npm ci && npm run build
+Migration:   npm run migrate:deploy
+Start:       npm start
+Health:      GET /health
 ```
 
-The command performs one synchronization and exits. It reuses the same TikTok
-order synchronization service as the manual **Sync TikTok Orders** button,
-including token refresh, pagination, and the maximum-page safeguard. Existing
-TikTok orders are ignored. Newly imported orders remain `NEEDS_ITEMS`, no order
-items are created, and stock is not deducted. The manual sync button remains
-available.
-
-Scheduling will be configured separately after local testing; the Express
-server does not schedule or expose this command as a cron endpoint.
-
-## Main Endpoints
-
-### Products
-
-```http
-GET    /products
-GET    /products/low-stock
-GET    /products/:id
-POST   /products
-PUT    /products/:id
-DELETE /products/:id
-```
-
-### Product Categories
-
-```http
-GET    /product-categories
-GET    /product-categories/:id
-POST   /product-categories
-PUT    /product-categories/:id
-DELETE /product-categories/:id
-```
-
-### Orders
-
-```http
-GET    /orders
-GET    /orders/:id
-POST   /orders
-POST   /orders/:id/complete-import
-PATCH  /orders/:id/status
-```
-
-### Expenses
-
-```http
-GET    /expenses
-GET    /expenses/:id
-POST   /expenses
-PUT    /expenses/:id
-DELETE /expenses/:id
-```
-
-### Stock Movements
-
-```http
-GET  /stock-movements
-POST /stock-movements/adjust
-```
-
-### Dashboard
-
-```http
-GET /dashboard/summary
-```
-
-Example:
-
-```http
-GET /dashboard/summary?year=2026&month=7
-```
-
-### Reports
-
-```http
-GET /reports/monthly
-GET /reports/sales-trends
-```
-
-Examples:
-
-```http
-GET /reports/monthly?year=2026&month=7
-GET /reports/sales-trends?startDate=2026-07-01&endDate=2026-07-31
-```
-
-Report month and day boundaries use the backend process's local timezone. The
-application's business timezone is Malaysia time (`Asia/Kuching`, UTC+08:00),
-so backend deployments should set `TZ=Asia/Kuching`. The monthly Overview and
-Sales Trends report share this boundary behaviour; date-only trend parameters
-are interpreted as inclusive local business dates.
-
-## Example: Create Product
-
-```http
-POST /products
-```
-
-```json
-{
-  "name": "Tudung Bawal Premium",
-  "sku": "TDG001",
-  "costPrice": 12,
-  "sellPrice": 25,
-  "stock": 20,
-  "categoryId": "category_id_here"
-}
-```
-
-## Example: Create Order
-
-```http
-POST /orders
-```
-
-```json
-{
-  "orderNumber": "ORD001",
-  "platform": "MANUAL",
-  "status": "COMPLETED",
-  "customerName": "Aina",
-  "items": [
-    {
-      "productId": "product_id_here",
-      "quantity": 2
-    }
-  ]
-}
-```
-
-When an order is created, product stock is automatically deducted and a stock movement record is created.
-
-## Example: Create Expense
-
-```http
-POST /expenses
-```
-
-```json
-{
-  "title": "Packaging Plastic",
-  "amount": 25,
-  "category": "PACKAGING",
-  "description": "Plastic bags for orders",
-  "expenseDate": "2026-07-08"
-}
-```
-
-## Example: Manual Stock Adjustment
-
-```http
-POST /stock-movements/adjust
-```
-
-```json
-{
-  "productId": "product_id_here",
-  "type": "RESTOCK",
-  "quantity": 10,
-  "note": "New stock from supplier"
-}
-```
-
-## Example Error Response
-
-```json
-{
-  "success": false,
-  "message": "Validation failed",
-  "errors": [
-    {
-      "field": "name",
-      "message": "Product name is required"
-    }
-  ]
-}
-```
-
-## Example Success Response
-
-```json
-{
-  "success": true,
-  "data": {}
-}
-```
-
-For paginated endpoints, the response includes metadata:
-
-```json
-{
-  "success": true,
-  "data": [],
-  "meta": {
-    "total": 10,
-    "page": 1,
-    "limit": 10,
-    "totalPages": 1,
-    "hasNextPage": false,
-    "hasPreviousPage": false
-  }
-}
-```
-
-## Current Status
-
-Backend API is functional and ready to be connected to a frontend or mobile application.
+If the selected Render plan does not provide a pre-deploy command, run the migration command as a deliberate release step before promoting the new API version. See [`../docs/ADMIN_GUIDE.md`](../docs/ADMIN_GUIDE.md).

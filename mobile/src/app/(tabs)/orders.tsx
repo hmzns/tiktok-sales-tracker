@@ -36,6 +36,10 @@ import { showSuccessMessage } from "../../utils/showSuccessMessage";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import type { StatusTone } from "../../components/ui/StatusBadge";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  calculateCompletedOrderMonthChange,
+  getOrderComparisonPeriods,
+} from "../../utils/orderMonthComparison";
 
 const formatRM = (value: number) => {
   return Number.isFinite(value) ? `RM ${value.toFixed(2)}` : "—";
@@ -44,7 +48,7 @@ const formatRM = (value: number) => {
 const formatDifference = (value: number | null) =>
   value !== null && Number.isFinite(value)
     ? `${value >= 0 ? "↑" : "↓"} ${Math.abs(value).toFixed(1)}%`
-    : "—";
+    : "No prior data";
 
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);
@@ -337,14 +341,11 @@ export default function OrdersScreen() {
     try {
       setError(null);
 
-      const now = new Date();
-      const previousMonth = now.getMonth() === 0 ? 12 : now.getMonth();
-      const previousYear =
-        now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+      const { current, previous } = getOrderComparisonPeriods();
       const [result, currentSummary, previousSummary] = await Promise.all([
         getAllOrders(),
-        getDashboardSummary(now.getFullYear(), now.getMonth() + 1),
-        getDashboardSummary(previousYear, previousMonth),
+        getDashboardSummary(current.year, current.month),
+        getDashboardSummary(previous.year, previous.month),
       ]);
 
       setOrders(result);
@@ -352,11 +353,7 @@ export default function OrdersScreen() {
       const currentCount = currentSummary.orderCount;
       const previousCount = previousSummary.orderCount;
       setMonthDifference(
-        previousCount === 0
-          ? currentCount === 0
-            ? 0
-            : 100
-          : ((currentCount - previousCount) / previousCount) * 100
+        calculateCompletedOrderMonthChange(currentCount, previousCount)
       );
     } catch {
       setError("Failed to load orders");
@@ -570,7 +567,12 @@ export default function OrdersScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <View style={styles.pageHeader}>
+      <View
+        style={[
+          styles.pageHeader,
+          isCompactLayout && styles.compactPageHeader,
+        ]}
+      >
         <View
           style={[
             styles.headerCopy,
@@ -633,7 +635,11 @@ export default function OrdersScreen() {
           <Text style={styles.comparisonLabel}>vs previous month</Text>
           <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[
             styles.comparisonValue,
-            (monthDifference ?? 0) >= 0 ? styles.positiveComparison : styles.negativeComparison,
+            monthDifference === null
+              ? styles.neutralComparison
+              : monthDifference >= 0
+                ? styles.positiveComparison
+                : styles.negativeComparison,
           ]}>
             {formatDifference(monthDifference)}
           </Text>
@@ -983,6 +989,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   pageHeader: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 16, marginBottom: 22 },
+  compactPageHeader: { marginBottom: 14 },
   headerCopy: { flex: 1, minWidth: 260 },
   compactHeaderCopy: { minWidth: "100%" },
   headerActions: {
@@ -1022,6 +1029,7 @@ const styles = StyleSheet.create({
   comparisonValue: { fontSize: 30, fontWeight: "800", textAlign: "right" },
   positiveComparison: { color: "#6CE9A6" },
   negativeComparison: { color: "#FDA29B" },
+  neutralComparison: { color: UI.colors.onDarkMuted },
   toolsCard: { backgroundColor: UI.colors.surface, borderRadius: UI.radius.large, padding: 12, borderWidth: 1, borderColor: UI.colors.border, marginBottom: 16, ...UI.shadow },
   searchRow: { minHeight: 50, flexDirection: "row", alignItems: "center", backgroundColor: UI.colors.surfaceMuted, borderWidth: 1, borderColor: UI.colors.border, borderRadius: UI.radius.medium, paddingLeft: 14 },
   searchGlyph: { color: UI.colors.inkMuted, fontSize: 22, marginRight: 8 },

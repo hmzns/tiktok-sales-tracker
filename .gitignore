@@ -3,6 +3,17 @@ backend/.env
 backend/dist/
 
 mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/web-build/
 
 node_modules/
 .env
+.env.*
+!.env.example
+!**/.env.example
+
+coverage/
+*.log
+*.tmp
+.DS_Store

@@ -55,11 +55,6 @@ export const callback = async (req: Request, res: Response) => {
     getSingleQueryValue(req.query.auth_code);
   const tiktokError = getSingleQueryValue(req.query.error);
 
-  console.warn(
-    "tiktok_callback_query_keys",
-    Object.keys(req.query).sort()
-  );
-
   try {
     await completeTikTokShopAuthorization({ state, code, tiktokError });
     return redirectOrRespond(

@@ -35,6 +35,7 @@ type SelectedOrderItem = {
 export default function AddOrderScreen() {
   const [showBackToTop, setShowBackToTop] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const selectedItemsOffsetRef = useRef(0);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProductId, setSelectedProductId] = useState("");
   const [quantity, setQuantity] = useState("1");
@@ -62,7 +63,10 @@ export default function AddOrderScreen() {
     try {
       setLoadingProducts(true);
 
-      const result = await getProducts(1, 100, "", true);
+      // Include inactive products so the picker can communicate their state.
+      // Inactive products remain non-selectable below, matching the previous
+      // active-only selection behavior.
+      const result = await getProducts(1, 100);
       setProducts(result.products);
     } catch {
       Alert.alert("Unable to load products", "Please check your connection and try again.");
@@ -181,6 +185,16 @@ export default function AddOrderScreen() {
 
     setSelectedProductId("");
     setQuantity("1");
+    setFieldErrors((current) => ({ ...current, selectedItems: "" }));
+
+    // The item card is rendered below the product picker. Bring it into view
+    // after the state update so a successful add has immediate feedback.
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        y: Math.max(0, selectedItemsOffsetRef.current - UI.spacing.md),
+        animated: true,
+      });
+    });
   };
 
   const handleRemoveItem = (productId: string) => {
@@ -332,6 +346,8 @@ export default function AddOrderScreen() {
           <View style={styles.productList}>
             {products.map((product) => {
               const isSelected = selectedProductId === product.id;
+              const isInactive = !product.isActive;
+              const isFaded = isInactive || product.stock < 1;
 
               return (
                 <Pressable
@@ -339,13 +355,19 @@ export default function AddOrderScreen() {
                   style={[
                     styles.productOption,
                     isSelected && styles.selectedProductOption,
+                    isFaded && styles.disabledProductOption,
                   ]}
                   onPress={() => {
+                    if (isInactive) {
+                      return;
+                    }
+
                     setSelectedProductId(product.id);
                     setFieldErrors((current) => ({ ...current, product: "" }));
                   }}
+                  disabled={isInactive}
                   accessibilityRole="button"
-                  accessibilityState={{ selected: isSelected }}
+                  accessibilityState={{ selected: isSelected, disabled: isInactive }}
                 >
                   <Text
                     style={[
@@ -391,7 +413,12 @@ export default function AddOrderScreen() {
         </Pressable>
       </View>
 
-      <View style={styles.formCard}>
+      <View
+        style={styles.formCard}
+        onLayout={(event) => {
+          selectedItemsOffsetRef.current = event.nativeEvent.layout.y;
+        }}
+      >
         <Text style={styles.sectionTitle}>Selected Items</Text>
         <FieldError message={fieldErrors.selectedItems} />
 
@@ -633,6 +660,12 @@ const styles = StyleSheet.create({
   selectedProductOption: {
     backgroundColor: UI.colors.ink,
     borderColor: UI.colors.ink,
+  },
+  // Keep this aligned with Order Completion's disabled product option.
+  disabledProductOption: {
+    backgroundColor: UI.colors.surfaceMuted,
+    borderColor: UI.colors.border,
+    opacity: 0.65,
   },
   productName: {
     fontSize: 14,

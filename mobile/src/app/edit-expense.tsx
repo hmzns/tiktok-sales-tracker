@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -15,6 +15,7 @@ import {
   getExpenseById,
   updateExpense,
 } from "../api/expenses";
+import { FieldError } from "../components/FieldError";
 import { LoadingState } from "../components/LoadingState";
 import { AppButton } from "../components/ui/AppButton";
 import {
@@ -25,6 +26,7 @@ import {
 } from "../components/ui/DatePickerModal";
 import { UI } from "../constants/ui";
 import { sharedStyles } from "../constants/sharedStyles";
+import { getPositiveAmountError } from "../utils/formValidation";
 import { showSuccessMessage } from "../utils/showSuccessMessage";
 
 const EXPENSE_CATEGORIES: ExpenseCategory[] = [
@@ -49,8 +51,9 @@ export default function EditExpenseScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [amountError, setAmountError] = useState("");
 
-  const loadExpense = async () => {
+  const loadExpense = useCallback(async () => {
     if (!expenseId) return;
 
     try {
@@ -72,10 +75,13 @@ export default function EditExpenseScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [expenseId]);
 
   const handleUpdateExpense = async () => {
     if (!expenseId) return;
+
+    const nextAmountError = getPositiveAmountError(amount);
+    setAmountError(nextAmountError);
 
     if (!title.trim()) {
       Alert.alert("Error", "Expense title is required.");
@@ -84,8 +90,7 @@ export default function EditExpenseScreen() {
 
     const parsedAmount = Number(amount);
 
-    if (Number.isNaN(parsedAmount) || parsedAmount < 0) {
-      Alert.alert("Error", "Amount must be a valid number.");
+    if (nextAmountError) {
       return;
     }
 
@@ -123,8 +128,8 @@ export default function EditExpenseScreen() {
   };
 
   useEffect(() => {
-    loadExpense();
-  }, [expenseId]);
+    void loadExpense();
+  }, [loadExpense]);
 
   if (loading) {
     return <LoadingState title="Loading expense" message="Getting the latest expense details." />;
@@ -158,10 +163,14 @@ export default function EditExpenseScreen() {
         placeholder="Example: 25"
         placeholderTextColor={UI.colors.inkSubtle}
         value={amount}
-        onChangeText={setAmount}
+        onChangeText={(value) => {
+          setAmount(value);
+          setAmountError(getPositiveAmountError(value));
+        }}
         keyboardType="decimal-pad"
         inputMode="decimal"
       />
+      <FieldError message={amountError} />
 
       <Text style={styles.label}>Category</Text>
 

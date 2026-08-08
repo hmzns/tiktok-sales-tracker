@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { getDashboardSummary } from "../../api/dashboard";
-import { getAllOrders } from "../../api/orders";
+import { getOrders } from "../../api/orders";
 import { ErrorState } from "../../components/ErrorState";
 import { LoadingState } from "../../components/LoadingState";
 import { UI } from "../../constants/ui";
@@ -69,23 +69,19 @@ export default function HomeScreen() {
   const [showBackToTop, setShowBackToTop] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
-  const loadDashboard = async () => {
+  const loadDashboard = useCallback(async () => {
     try {
       setError(null);
 
       const previousMonth = currentMonth === 1 ? 12 : currentMonth - 1;
       const previousYear = currentMonth === 1 ? currentYear - 1 : currentYear;
-      const [data, previousData, orders] = await Promise.all([
+      const [data, previousData, needsItems] = await Promise.all([
         getDashboardSummary(currentYear, currentMonth),
         getDashboardSummary(previousYear, previousMonth),
-        getAllOrders(),
+        getOrders(1, 1, "", "NEEDS_ITEMS"),
       ]);
       setDashboard(data);
-      setNeedsItemsCount(
-        orders.filter(
-          (order) => order.status === "NEEDS_ITEMS"
-        ).length
-      );
+      setNeedsItemsCount(needsItems.meta.total);
       setNetProfitDifference(
         previousData.netProfit === 0
           ? data.netProfit === 0
@@ -101,12 +97,12 @@ export default function HomeScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [currentMonth, currentYear]);
 
   useFocusEffect(
     useCallback(() => {
-      loadDashboard();
-    }, [])
+      void loadDashboard();
+    }, [loadDashboard])
   );
 
   const onRefresh = () => {

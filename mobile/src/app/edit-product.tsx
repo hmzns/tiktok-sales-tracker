@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -18,10 +18,15 @@ import {
   getProductCategories,
   ProductCategory,
 } from "../api/productCategories";
+import { FieldError } from "../components/FieldError";
 import { LoadingState } from "../components/LoadingState";
 import { AppButton } from "../components/ui/AppButton";
 import { UI } from "../constants/ui";
 import { sharedStyles } from "../constants/sharedStyles";
+import {
+  getNonNegativeNumberError,
+  getWholeNumberNonNegativeError,
+} from "../utils/formValidation";
 import { showSuccessMessage } from "../utils/showSuccessMessage";
 
 export default function EditProductScreen() {
@@ -39,8 +44,13 @@ export default function EditProductScreen() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({
+    costPrice: "",
+    sellPrice: "",
+    stock: "",
+  });
 
-  const loadProduct = async () => {
+  const loadProduct = useCallback(async () => {
     if (!productId) return;
 
     try {
@@ -69,10 +79,29 @@ export default function EditProductScreen() {
     } finally {
       setLoading(false);
     }
+  }, [productId]);
+
+  const validateProductNumbers = () => {
+    const errors = {
+      costPrice: getNonNegativeNumberError(
+        costPrice,
+        "Cost price must be 0 or more."
+      ),
+      sellPrice: getNonNegativeNumberError(
+        sellPrice,
+        "Sell price must be 0 or more."
+      ),
+      stock: getWholeNumberNonNegativeError(stock),
+    };
+
+    setFieldErrors(errors);
+    return !Object.values(errors).some(Boolean);
   };
 
   const handleUpdateProduct = async () => {
     if (!productId) return;
+
+    const productNumbersAreValid = validateProductNumbers();
 
     if (!name.trim() || !sku.trim()) {
       Alert.alert("Error", "Product name and SKU are required.");
@@ -83,12 +112,7 @@ export default function EditProductScreen() {
     const parsedSellPrice = Number(sellPrice);
     const parsedStock = Number(stock);
 
-    if (
-      Number.isNaN(parsedCostPrice) ||
-      Number.isNaN(parsedSellPrice) ||
-      Number.isNaN(parsedStock)
-    ) {
-      Alert.alert("Error", "Cost price, sell price, and stock must be numbers.");
+    if (!productNumbersAreValid) {
       return;
     }
 
@@ -116,8 +140,8 @@ export default function EditProductScreen() {
   };
 
   useEffect(() => {
-    loadProduct();
-  }, [productId]);
+    void loadProduct();
+  }, [loadProduct]);
 
   if (loading) {
     return <LoadingState title="Loading product" message="Getting the latest product details." />;
@@ -159,10 +183,20 @@ export default function EditProductScreen() {
         placeholder="Example: 10"
         placeholderTextColor={UI.colors.inkSubtle}
         value={costPrice}
-        onChangeText={setCostPrice}
+        onChangeText={(value) => {
+          setCostPrice(value);
+          setFieldErrors((current) => ({
+            ...current,
+            costPrice: getNonNegativeNumberError(
+              value,
+              "Cost price must be 0 or more."
+            ),
+          }));
+        }}
         keyboardType="decimal-pad"
         inputMode="decimal"
       />
+      <FieldError message={fieldErrors.costPrice} />
 
       <Text style={styles.label}>Sell Price</Text>
       <TextInput
@@ -170,10 +204,20 @@ export default function EditProductScreen() {
         placeholder="Example: 20"
         placeholderTextColor={UI.colors.inkSubtle}
         value={sellPrice}
-        onChangeText={setSellPrice}
+        onChangeText={(value) => {
+          setSellPrice(value);
+          setFieldErrors((current) => ({
+            ...current,
+            sellPrice: getNonNegativeNumberError(
+              value,
+              "Sell price must be 0 or more."
+            ),
+          }));
+        }}
         keyboardType="decimal-pad"
         inputMode="decimal"
       />
+      <FieldError message={fieldErrors.sellPrice} />
 
       <Text style={styles.label}>Stock</Text>
       <TextInput
@@ -181,10 +225,17 @@ export default function EditProductScreen() {
         placeholder="Example: 50"
         placeholderTextColor={UI.colors.inkSubtle}
         value={stock}
-        onChangeText={setStock}
+        onChangeText={(value) => {
+          setStock(value);
+          setFieldErrors((current) => ({
+            ...current,
+            stock: getWholeNumberNonNegativeError(value),
+          }));
+        }}
         keyboardType="numeric"
         inputMode="numeric"
       />
+      <FieldError message={fieldErrors.stock} />
 
       <Text style={styles.label}>Category</Text>
 

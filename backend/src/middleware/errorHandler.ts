@@ -8,11 +8,20 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ) => {
+  const isProduction = process.env.NODE_ENV === "production";
+  const errorCategory =
+    error instanceof AppError
+      ? "APP_ERROR"
+      : error instanceof Prisma.PrismaClientKnownRequestError
+        ? `PRISMA_${error.code}`
+        : error.name || "UNKNOWN_ERROR";
+
   console.error(`[${new Date().toISOString()}] Request error:`, {
     method: req.method,
     path: req.path,
-    message: error.message,
-    stack: process.env.NODE_ENV === "production" ? undefined : error.stack,
+    category: errorCategory,
+    message: isProduction ? undefined : error.message,
+    stack: isProduction ? undefined : error.stack,
   });
 
   if (error instanceof AppError) {

@@ -20,6 +20,10 @@ import {
 } from "../api/productCategories";
 import { UI } from "../constants/ui";
 import { sharedStyles } from "../constants/sharedStyles";
+import {
+  getNonNegativeNumberError,
+  getWholeNumberNonNegativeError,
+} from "../utils/formValidation";
 
 export default function AddProductScreen() {
   const [name, setName] = useState("");
@@ -73,17 +77,15 @@ export default function AddProductScreen() {
       errors.sku = "SKU is required.";
     }
 
-    if (!costPrice || Number(costPrice) < 0) {
-      errors.costPrice = "Cost price must be 0 or more.";
-    }
-
-    if (!sellPrice || Number(sellPrice) < 0) {
-      errors.sellPrice = "Sell price must be 0 or more.";
-    }
-
-    if (stock && Number(stock) < 0) {
-      errors.stock = "Stock cannot be negative.";
-    }
+    errors.costPrice = getNonNegativeNumberError(
+      costPrice,
+      "Cost price must be 0 or more."
+    );
+    errors.sellPrice = getNonNegativeNumberError(
+      sellPrice,
+      "Sell price must be 0 or more."
+    );
+    errors.stock = getWholeNumberNonNegativeError(stock);
 
     setFieldErrors(errors);
 
@@ -96,35 +98,6 @@ export default function AddProductScreen() {
     const parsedStock = Number(stock);
 
     if (!validateProductForm()) {
-      return;
-    }
-
-    if (!name.trim()) {
-      Alert.alert("Validation Error", "Product name is required");
-      return;
-    }
-
-    if (!sku.trim()) {
-      Alert.alert("Validation Error", "SKU is required");
-      return;
-    }
-
-    if (Number.isNaN(parsedCostPrice) || parsedCostPrice < 0) {
-      Alert.alert("Validation Error", "Cost price must be 0 or more");
-      return;
-    }
-
-    if (Number.isNaN(parsedSellPrice) || parsedSellPrice < 0) {
-      Alert.alert("Validation Error", "Sell price must be 0 or more");
-      return;
-    }
-
-    if (
-      Number.isNaN(parsedStock) ||
-      parsedStock < 0 ||
-      !Number.isInteger(parsedStock)
-    ) {
-      Alert.alert("Validation Error", "Stock must be a whole number");
       return;
     }
 
@@ -196,7 +169,13 @@ export default function AddProductScreen() {
           value={costPrice}
           onChangeText={(value) => {
             setCostPrice(value);
-            setFieldErrors((current) => ({ ...current, costPrice: "" }));
+            setFieldErrors((current) => ({
+              ...current,
+              costPrice: getNonNegativeNumberError(
+                value,
+                "Cost price must be 0 or more."
+              ),
+            }));
           }}
           keyboardType="decimal-pad"
           inputMode="decimal"
@@ -211,7 +190,13 @@ export default function AddProductScreen() {
           value={sellPrice}
           onChangeText={(value) => {
             setSellPrice(value);
-            setFieldErrors((current) => ({ ...current, sellPrice: "" }));
+            setFieldErrors((current) => ({
+              ...current,
+              sellPrice: getNonNegativeNumberError(
+                value,
+                "Sell price must be 0 or more."
+              ),
+            }));
           }}
           keyboardType="decimal-pad"
           inputMode="decimal"
@@ -226,7 +211,10 @@ export default function AddProductScreen() {
           value={stock}
           onChangeText={(value) => {
             setStock(value);
-            setFieldErrors((current) => ({ ...current, stock: "" }));
+            setFieldErrors((current) => ({
+              ...current,
+              stock: getWholeNumberNonNegativeError(value),
+            }));
           }}
           keyboardType="numeric"
           inputMode="numeric"

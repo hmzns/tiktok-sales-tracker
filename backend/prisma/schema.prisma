@@ -98,6 +98,9 @@ model Product {
 
   orderItems     OrderItem[]
   stockMovements StockMovement[]
+
+  @@index([categoryId])
+  @@index([createdAt(sort: Desc)])
 }
 
 model SalesOrder {
@@ -139,6 +142,10 @@ model SalesOrder {
   updatedAt DateTime @updatedAt
 
   items OrderItem[]
+
+  @@index([createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([platform, createdAt(sort: Desc)])
 }
 
 model TikTokConnection {
@@ -204,6 +211,9 @@ model OrderItem {
 
   order   SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product    @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
 }
 
 model Expense {
@@ -216,6 +226,9 @@ model Expense {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([expenseDate(sort: Desc)])
+  @@index([category, expenseDate(sort: Desc)])
 }
 
 model ProductCategory {
@@ -245,4 +258,7 @@ model StockMovement {
   createdAt DateTime @default(now())
 
   product Product @relation(fields: [productId], references: [id])
+
+  @@index([createdAt(sort: Desc)])
+  @@index([productId, createdAt(sort: Desc)])
 }

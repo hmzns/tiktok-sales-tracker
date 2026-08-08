@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   Alert,
   Platform,
@@ -39,11 +39,12 @@ export default function ProductsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [submittedSearch, setSubmittedSearch] = useState("");
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
-  const loadProducts = async () => {
+  const loadProducts = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -54,7 +55,7 @@ export default function ProductsScreen() {
       }
 
       const [result, allProducts] = await Promise.all([
-        getProducts(1, 20, search),
+        getProducts(1, 20, submittedSearch),
         getProducts(1, 1),
       ]);
       setProducts(result.products);
@@ -65,18 +66,23 @@ export default function ProductsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [showLowStockOnly, submittedSearch]);
 
   // Reload after add/edit screens close so the list reflects saved changes.
   useFocusEffect(
     useCallback(() => {
-      loadProducts();
-    }, [])
+      void loadProducts();
+    }, [loadProducts])
   );
 
-  useEffect(() => {
-    loadProducts();
-  }, [showLowStockOnly]);
+  const handleSearch = () => {
+    if (search === submittedSearch) {
+      void loadProducts();
+      return;
+    }
+
+    setSubmittedSearch(search);
+  };
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -196,7 +202,12 @@ export default function ProductsScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <View style={styles.pageHeader}>
+      <View
+        style={[
+          styles.pageHeader,
+          isCompactLayout && styles.compactPageHeader,
+        ]}
+      >
         <View style={[styles.headerCopy, isCompactLayout && styles.compactHeaderCopy]}>
           <Text accessibilityRole="header" style={styles.title}>Products</Text>
           <Text style={styles.subtitle}>Manage pricing, stock, and availability</Text>
@@ -233,11 +244,11 @@ export default function ProductsScreen() {
             placeholderTextColor={UI.colors.inkSubtle}
             value={search}
             onChangeText={setSearch}
-            onSubmitEditing={loadProducts}
+            onSubmitEditing={handleSearch}
             returnKeyType="search"
             accessibilityLabel="Search products by name or SKU"
           />
-          <Pressable accessibilityRole="button" style={styles.searchButton} onPress={loadProducts}>
+          <Pressable accessibilityRole="button" style={styles.searchButton} onPress={handleSearch}>
             <Text style={styles.searchButtonText}>Search</Text>
           </Pressable>
         </View>
@@ -402,6 +413,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   pageHeader: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 16, marginBottom: 22 },
+  compactPageHeader: { marginBottom: 14 },
   eyebrow: { color: UI.colors.primary, fontSize: 11, fontWeight: "800", letterSpacing: 1.5, marginBottom: 5 },
   headerCopy: { flex: 1, minWidth: 260 },
   compactHeaderCopy: { minWidth: "100%" },

@@ -18,6 +18,7 @@ import {
 } from "../api/expenses";
 import { UI } from "../constants/ui";
 import { sharedStyles } from "../constants/sharedStyles";
+import { getPositiveAmountError } from "../utils/formValidation";
 
 const categories: ExpenseCategory[] = [
   "PACKAGING",
@@ -53,9 +54,7 @@ export default function AddExpenseScreen() {
       errors.title = "Expense title is required.";
     }
 
-    if (!amount || Number(amount) < 0) {
-      errors.amount = "Amount must be 0 or more.";
-    }
+    errors.amount = getPositiveAmountError(amount);
 
     if (!category) {
       errors.category = "Category is required.";
@@ -70,16 +69,6 @@ export default function AddExpenseScreen() {
     const parsedAmount = Number(amount);
 
     if (!validateExpenseForm()) {
-      return;
-    }
-
-    if (!title.trim()) {
-      Alert.alert("Validation Error", "Expense title is required");
-      return;
-    }
-
-    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
-      Alert.alert("Validation Error", "Amount must be more than 0");
       return;
     }
 
@@ -137,7 +126,10 @@ export default function AddExpenseScreen() {
           value={amount}
           onChangeText={(value) => {
             setAmount(value);
-            setFieldErrors((current) => ({ ...current, amount: "" }));
+            setFieldErrors((current) => ({
+              ...current,
+              amount: getPositiveAmountError(value),
+            }));
           }}
           keyboardType="decimal-pad"
           inputMode="decimal"

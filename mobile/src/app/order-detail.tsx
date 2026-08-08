@@ -219,7 +219,33 @@ export default function OrderDetailScreen() {
   const productsLoadedRef = useRef(false);
   const productsLoadingRef = useRef(false);
 
-  const loadOrder = async (showLoading = true) => {
+  const loadProducts = useCallback(async (force = false) => {
+    if (
+      productsLoadingRef.current ||
+      (!force && productsLoadedRef.current)
+    ) {
+      return;
+    }
+
+    try {
+      productsLoadingRef.current = true;
+      setLoadingProducts(true);
+      setProductLoadError("");
+
+      const result = await getProducts(1, 100, "", true);
+      setProducts(result.products);
+      productsLoadedRef.current = true;
+    } catch {
+      setProductLoadError(
+        "Unable to load available products. Check your connection and try again."
+      );
+    } finally {
+      productsLoadingRef.current = false;
+      setLoadingProducts(false);
+    }
+  }, []);
+
+  const loadOrder = useCallback(async (showLoading = true) => {
     if (!orderId) return;
 
     try {
@@ -253,33 +279,7 @@ export default function OrderDetailScreen() {
         setLoading(false);
       }
     }
-  };
-
-  const loadProducts = async (force = false) => {
-    if (
-      productsLoadingRef.current ||
-      (!force && productsLoadedRef.current)
-    ) {
-      return;
-    }
-
-    try {
-      productsLoadingRef.current = true;
-      setLoadingProducts(true);
-      setProductLoadError("");
-
-      const result = await getProducts(1, 100, "", true);
-      setProducts(result.products);
-      productsLoadedRef.current = true;
-    } catch {
-      setProductLoadError(
-        "Unable to load available products. Check your connection and try again."
-      );
-    } finally {
-      productsLoadingRef.current = false;
-      setLoadingProducts(false);
-    }
-  };
+  }, [loadProducts, orderId]);
 
   const updateStatus = async (status: OrderStatus) => {
     if (!orderId) return;
@@ -336,10 +336,10 @@ export default function OrderDetailScreen() {
 
   const applyHistoricalPaymentMode = async (
     nextMode: TikTokPaymentMode,
-    trackerPriceCorrections: Array<{
+    trackerPriceCorrections: {
       orderItemId: string;
       unitPrice: number;
-    }> = []
+    }[] = []
   ) => {
     if (!orderId) return;
 
@@ -499,7 +499,7 @@ export default function OrderDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadOrder();
-    }, [orderId])
+    }, [loadOrder])
   );
 
   const canCompleteImportedOrder =

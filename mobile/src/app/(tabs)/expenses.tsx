@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient } from "../../api/client";
 import {
   Alert,
@@ -61,12 +61,22 @@ export default function ExpensesScreen() {
   const [error, setError] = useState<string | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const searchRef = useRef(search);
 
-  const loadExpenses = async () => {
+  useEffect(() => {
+    searchRef.current = search;
+  }, [search]);
+
+  const loadExpenses = useCallback(async () => {
     try {
       setError(null);
 
-      const result = await getExpenses(1, 20, search, categoryFilter);
+      const result = await getExpenses(
+        1,
+        20,
+        searchRef.current,
+        categoryFilter
+      );
 
       setExpenses(result.expenses);
       setTotal(result.meta.total);
@@ -83,11 +93,11 @@ export default function ExpensesScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [categoryFilter]);
 
   useEffect(() => {
-    loadExpenses();
-  }, [categoryFilter]);
+    void loadExpenses();
+  }, [loadExpenses]);
 
   const onRefresh = () => {
     setRefreshing(true);

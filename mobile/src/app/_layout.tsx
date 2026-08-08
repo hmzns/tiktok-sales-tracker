@@ -3,9 +3,15 @@ import * as SplashScreen from "expo-splash-screen";
 import { useColorScheme } from "react-native";
 
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
+import { AppHeaderBackButton } from "@/components/ui/AppHeaderBackButton";
 import { UI } from "@/constants/ui";
 
 SplashScreen.preventAutoHideAsync();
+
+const affectedScreenBackButton = {
+  headerLeft: ({ canGoBack }: { canGoBack?: boolean }) =>
+    canGoBack ? <AppHeaderBackButton /> : null,
+};
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -34,6 +40,7 @@ export default function RootLayout() {
           name="add-product"
           options={{
             title: "Add Product",
+            ...affectedScreenBackButton,
           }}
         />
 
@@ -41,6 +48,7 @@ export default function RootLayout() {
           name="edit-product"
           options={{
             title: "Edit Product",
+            ...affectedScreenBackButton,
           }}
         />
 
@@ -48,6 +56,7 @@ export default function RootLayout() {
           name="product-categories"
           options={{
             title: "Product Categories",
+            ...affectedScreenBackButton,
           }}
         />
 
@@ -55,6 +64,7 @@ export default function RootLayout() {
           name="edit-product-category"
           options={{
             title: "Edit Category",
+            ...affectedScreenBackButton,
           }}
         />
 
@@ -62,6 +72,7 @@ export default function RootLayout() {
           name="add-order"
           options={{
             title: "Create Order",
+            ...affectedScreenBackButton,
           }}
         />
 
@@ -69,6 +80,7 @@ export default function RootLayout() {
           name="order-detail"
           options={{
             title: "Order Detail",
+            ...affectedScreenBackButton,
           }}
         />
 
@@ -76,6 +88,7 @@ export default function RootLayout() {
           name="add-expense"
           options={{
             title: "Add Expense",
+            ...affectedScreenBackButton,
           }}
         />
 
@@ -83,6 +96,7 @@ export default function RootLayout() {
           name="edit-expense"
           options={{
             title: "Edit Expense",
+            ...affectedScreenBackButton,
           }}
         />
 
@@ -90,6 +104,7 @@ export default function RootLayout() {
           name="stock-movements"
           options={{
             title: "Stock Movements",
+            ...affectedScreenBackButton,
           }}
         />
 

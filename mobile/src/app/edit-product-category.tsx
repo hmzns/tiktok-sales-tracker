@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -29,7 +29,7 @@ export default function EditProductCategoryScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const loadCategory = async () => {
+  const loadCategory = useCallback(async () => {
     if (!categoryId) return;
 
     try {
@@ -45,7 +45,7 @@ export default function EditProductCategoryScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [categoryId]);
 
   const handleUpdateCategory = async () => {
     if (!categoryId) return;
@@ -75,8 +75,8 @@ export default function EditProductCategoryScreen() {
   };
 
   useEffect(() => {
-    loadCategory();
-  }, [categoryId]);
+    void loadCategory();
+  }, [loadCategory]);
 
   if (loading) {
     return <LoadingState title="Loading category" message="Getting the latest category details." />;

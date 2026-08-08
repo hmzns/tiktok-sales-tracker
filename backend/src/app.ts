@@ -20,9 +20,11 @@ const app = express();
 
 app.set("trust proxy", 1);
 
-const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",").map((origin) =>
-  origin.trim()
-);
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowUnconfiguredOrigins = process.env.NODE_ENV !== "production";
 
 app.use(
   cors({
@@ -31,7 +33,10 @@ app.use(
         return callback(null, true);
       }
 
-      if (!allowedOrigins || allowedOrigins.includes(origin)) {
+      if (
+        allowedOrigins.includes(origin) ||
+        (allowedOrigins.length === 0 && allowUnconfiguredOrigins)
+      ) {
         return callback(null, true);
       }
 
