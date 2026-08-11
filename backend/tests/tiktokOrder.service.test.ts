@@ -3,7 +3,11 @@ import test from "node:test";
 import {
   buildBasicTikTokOrderData,
   collectTikTokOrderPages,
+  getTikTokOrderSyncWindow,
   importBasicTikTokOrder,
+  isTikTokOrderEligibleForImport,
+  parseTikTokOrderImportStartAt,
+  syncTikTokOrders,
   tikTokOrderListApiPath,
   type TikTokOrder,
   type TikTokOrderStore,
@@ -11,6 +15,8 @@ import {
 import { syncTikTokOrdersSchema } from "../src/validators/tiktokShop.validator";
 
 const importedAt = new Date("2026-07-29T08:00:00.000Z");
+const trackerStartAt = "2026-09-01T00:00:00+08:00";
+const trackerStartEpoch = 1788192000;
 
 const basicOrder: TikTokOrder = {
   id: "576461413038785752",
@@ -28,6 +34,50 @@ const basicOrder: TikTokOrder = {
   },
 };
 
+const makeOrder = (id: string, ...createTimeValues: [unknown?]): TikTokOrder =>
+  ({
+    ...basicOrder,
+    id,
+    create_time:
+      createTimeValues.length === 0 ? trackerStartEpoch : createTimeValues[0],
+  }) as TikTokOrder;
+
+const fakeTikTokContext = {
+  appKey: "app-key",
+  appSecret: "app-secret",
+  apiBaseUrl: "https://example.test",
+  accessToken: "access-token",
+  shopCipher: "shop-cipher",
+  shopId: "shop-1",
+};
+
+const makeMemoryStore = () => {
+  const createdOrders: Record<string, unknown>[] = [];
+  const store: TikTokOrderStore = {
+    findByTikTokOrderId: async () => null,
+    createBasicOrder: async (data) => {
+      createdOrders.push(data);
+      return { id: `local-${createdOrders.length}` };
+    },
+  };
+
+  return { createdOrders, store };
+};
+
+const withQuietTikTokOrderLogs = async <T>(callback: () => Promise<T>) => {
+  const originalConsoleInfo = console.info;
+  const originalConsoleError = console.error;
+  console.info = () => undefined;
+  console.error = () => undefined;
+
+  try {
+    return await callback();
+  } finally {
+    console.info = originalConsoleInfo;
+    console.error = originalConsoleError;
+  }
+};
+
 test("order sync validation defaults to seven days and enforces 1 to 30", () => {
   assert.deepEqual(syncTikTokOrdersSchema.parse(undefined), { days: 7 });
   assert.deepEqual(syncTikTokOrdersSchema.parse({ days: 1 }), { days: 1 });
@@ -35,6 +85,100 @@ test("order sync validation defaults to seven days and enforces 1 to 30", () => 
   assert.throws(() => syncTikTokOrdersSchema.parse({ days: 0 }));
   assert.throws(() => syncTikTokOrdersSchema.parse({ days: 31 }));
   assert.throws(() => syncTikTokOrdersSchema.parse({ days: 1.5 }));
+});
+
+test("TikTok order import cutoff parses Malaysia midnight to the expected epoch", () => {
+  assert.equal(
+    parseTikTokOrderImportStartAt(trackerStartAt),
+    trackerStartEpoch
+  );
+});
+
+test("TikTok order import cutoff requires an absolute valid timestamp", () => {
+  assert.throws(() => parseTikTokOrderImportStartAt(undefined));
+  assert.throws(() => parseTikTokOrderImportStartAt("2026-09-01"));
+  assert.throws(() =>
+    parseTikTokOrderImportStartAt("2026-09-01T00:00:00")
+  );
+  assert.throws(() =>
+    parseTikTokOrderImportStartAt("2026-02-31T00:00:00+08:00")
+  );
+});
+
+test("orders before the TikTok tracker cutoff are not eligible for import", () => {
+  assert.equal(
+    isTikTokOrderEligibleForImport(
+      makeOrder("before-cutoff", trackerStartEpoch - 1),
+      trackerStartEpoch
+    ),
+    false
+  );
+});
+
+test("orders exactly at the TikTok tracker cutoff are eligible for import", () => {
+  assert.equal(
+    isTikTokOrderEligibleForImport(
+      makeOrder("exact-cutoff", trackerStartEpoch),
+      trackerStartEpoch
+    ),
+    true
+  );
+});
+
+test("orders after the TikTok tracker cutoff are eligible for import", () => {
+  assert.equal(
+    isTikTokOrderEligibleForImport(
+      makeOrder("after-cutoff", trackerStartEpoch + 1),
+      trackerStartEpoch
+    ),
+    true
+  );
+});
+
+test("orders with missing create_time are not eligible for import", () => {
+  assert.equal(
+    isTikTokOrderEligibleForImport(
+      makeOrder("missing-create-time", undefined),
+      trackerStartEpoch
+    ),
+    false
+  );
+});
+
+test("orders with invalid create_time are not eligible for import", () => {
+  assert.equal(
+    isTikTokOrderEligibleForImport(
+      makeOrder("invalid-create-time", "1788192000"),
+      trackerStartEpoch
+    ),
+    false
+  );
+});
+
+test("Malaysia timezone boundary maps before midnight to excluded and midnight to included", () => {
+  const beforeCutoffEpoch = parseTikTokOrderImportStartAt(
+    "2026-08-31T23:59:59+08:00"
+  );
+  const exactCutoffEpoch = parseTikTokOrderImportStartAt(
+    "2026-09-01T00:00:00+08:00"
+  );
+
+  assert.equal(beforeCutoffEpoch, 1788191999);
+  assert.equal(exactCutoffEpoch, trackerStartEpoch);
+  assert.equal(
+    isTikTokOrderEligibleForImport(
+      makeOrder("before-myt-midnight", beforeCutoffEpoch),
+      trackerStartEpoch
+    ),
+    false
+  );
+  assert.equal(
+    isTikTokOrderEligibleForImport(
+      makeOrder("at-myt-midnight", exactCutoffEpoch),
+      trackerStartEpoch
+    ),
+    true
+  );
 });
 
 test("a new TikTok order creates one incomplete order without items or stock work", async () => {
@@ -206,4 +350,74 @@ test("pagination fails instead of silently truncating at the page safeguard", as
 
 test("the supported TikTok order-list operation is the 202309 search path", () => {
   assert.equal(tikTokOrderListApiPath, "/order/202309/orders/search");
+});
+
+test("first-day rolling window is clamped to the tracker start cutoff", async () => {
+  const pageRequests: Array<{ createTimeGe: number; createTimeLt: number }> =
+    [];
+  const { store } = makeMemoryStore();
+
+  await withQuietTikTokOrderLogs(() =>
+    syncTikTokOrders(7, {
+      now: () => new Date("2026-09-01T12:00:00+08:00"),
+      getContext: async () => fakeTikTokContext,
+      configuredImportStartAt: trackerStartAt,
+      store,
+      requestOrderPage: async (input) => {
+        pageRequests.push({
+          createTimeGe: input.createTimeGe,
+          createTimeLt: input.createTimeLt,
+        });
+        return { orders: [] };
+      },
+    })
+  );
+
+  assert.equal(pageRequests.length, 1);
+  assert.equal(pageRequests[0].createTimeGe, trackerStartEpoch);
+});
+
+test("normal operation after launch keeps the existing rolling lower bound", () => {
+  const septemberEightMidnightMyt = parseTikTokOrderImportStartAt(
+    "2026-09-08T00:00:00+08:00"
+  );
+  const window = getTikTokOrderSyncWindow({
+    syncTime: new Date("2026-09-15T00:00:00+08:00"),
+    days: 7,
+    trackerStartEpoch,
+  });
+
+  assert.equal(window.createTimeGe, septemberEightMidnightMyt);
+});
+
+test("TikTok sync skips old, missing, and invalid create_time orders before importing", async () => {
+  const { createdOrders, store } = makeMemoryStore();
+  const summary = await withQuietTikTokOrderLogs(() =>
+    syncTikTokOrders(7, {
+      now: () => new Date("2026-09-02T12:00:00+08:00"),
+      getContext: async () => fakeTikTokContext,
+      configuredImportStartAt: trackerStartAt,
+      store,
+      requestOrderPage: async () => ({
+        orders: [
+          makeOrder("old-order", trackerStartEpoch - 1),
+          makeOrder("missing-create-time", undefined),
+          makeOrder("invalid-create-time", "1788192000"),
+          makeOrder("exact-cutoff", trackerStartEpoch),
+          makeOrder("after-cutoff", trackerStartEpoch + 1),
+        ],
+      }),
+    })
+  );
+
+  assert.deepEqual(summary, {
+    fetched: 5,
+    created: 2,
+    existing: 0,
+    failed: 0,
+  });
+  assert.deepEqual(
+    createdOrders.map((order) => order.tiktokOrderId),
+    ["exact-cutoff", "after-cutoff"]
+  );
 });

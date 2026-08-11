@@ -10,13 +10,15 @@ const TIKTOK_ORDER_PAGE_SIZE = 100;
 const MAX_TIKTOK_ORDER_PAGES = 100;
 const API_REQUEST_TIMEOUT_MS = 15_000;
 const FALLBACK_CUSTOMER_NAME = "TikTok Customer";
+const ORDER_IMPORT_START_AT_ENV = "TIKTOK_ORDER_IMPORT_START_AT";
+const SECONDS_PER_DAY = 24 * 60 * 60;
 
 const paymentValueSchema = z.union([z.string(), z.number()]).nullable();
 
 const tiktokOrderSchema = z.object({
   id: z.string().trim().min(1),
   status: z.string().nullable().optional(),
-  create_time: z.number().int().nonnegative().nullable().optional(),
+  create_time: z.unknown().nullable().optional(),
   update_time: z.number().int().nonnegative().nullable().optional(),
   recipient_address: z
     .object({
@@ -97,6 +99,162 @@ type ImportBasicTikTokOrderInput = {
   isUniqueConstraintError?: (error: unknown) => boolean;
 };
 
+type TikTokOrderPageRequestInput = {
+  appKey: string;
+  appSecret: string;
+  apiBaseUrl: string;
+  accessToken: string;
+  shopCipher: string;
+  createTimeGe: number;
+  createTimeLt: number;
+  pageToken: string | undefined;
+};
+
+type SyncTikTokOrdersDependencies = {
+  now: () => Date;
+  getContext: typeof getTikTokOrderApiContext;
+  requestOrderPage: (
+    input: TikTokOrderPageRequestInput
+  ) => Promise<TikTokOrderPage>;
+  store: TikTokOrderStore;
+  configuredImportStartAt: string | undefined;
+};
+
+type TikTokOrderSyncWindowInput = {
+  syncTime: Date;
+  days: number;
+  trackerStartEpoch: number;
+};
+
+const absoluteIsoTimestampPattern =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/;
+
+const getDaysInMonth = (year: number, month: number) =>
+  new Date(Date.UTC(year, month, 0)).getUTCDate();
+
+const toWholeSecondEpoch = (utcMilliseconds: number, variableName: string) => {
+  if (
+    !Number.isFinite(utcMilliseconds) ||
+    utcMilliseconds % 1000 !== 0
+  ) {
+    throw new AppError(
+      `${variableName} must resolve to a whole-second timestamp`,
+      500
+    );
+  }
+
+  return utcMilliseconds / 1000;
+};
+
+export const parseTikTokOrderImportStartAt = (
+  value: string | undefined,
+  variableName = ORDER_IMPORT_START_AT_ENV
+) => {
+  const trimmedValue = value?.trim();
+
+  if (!trimmedValue) {
+    throw new AppError(`${variableName} is required`, 500);
+  }
+
+  const match = absoluteIsoTimestampPattern.exec(trimmedValue);
+
+  if (!match) {
+    throw new AppError(
+      `${variableName} must be an absolute ISO timestamp with a timezone offset`,
+      500
+    );
+  }
+
+  const [
+    ,
+    yearValue,
+    monthValue,
+    dayValue,
+    hourValue,
+    minuteValue,
+    secondValue,
+    millisecondValue,
+    timezoneValue,
+    offsetSign,
+    offsetHourValue,
+    offsetMinuteValue,
+  ] = match;
+  const year = Number(yearValue);
+  const month = Number(monthValue);
+  const day = Number(dayValue);
+  const hour = Number(hourValue);
+  const minute = Number(minuteValue);
+  const second = Number(secondValue);
+  const millisecond = Number(
+    (millisecondValue ?? "0").padEnd(3, "0")
+  );
+
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > getDaysInMonth(year, month) ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
+  ) {
+    throw new AppError(`${variableName} is not a valid timestamp`, 500);
+  }
+
+  const offsetMinutes =
+    timezoneValue === "Z"
+      ? 0
+      : (offsetSign === "-" ? -1 : 1) *
+        (Number(offsetHourValue) * 60 + Number(offsetMinuteValue));
+
+  if (Math.abs(offsetMinutes) > 23 * 60 + 59) {
+    throw new AppError(`${variableName} has an invalid timezone offset`, 500);
+  }
+
+  const localMilliseconds = Date.UTC(
+    year,
+    month - 1,
+    day,
+    hour,
+    minute,
+    second,
+    millisecond
+  );
+  const utcMilliseconds = localMilliseconds - offsetMinutes * 60 * 1000;
+
+  return toWholeSecondEpoch(utcMilliseconds, variableName);
+};
+
+export const getTikTokOrderCreateTime = (order: TikTokOrder) =>
+  typeof order.create_time === "number" &&
+  Number.isInteger(order.create_time) &&
+  order.create_time >= 0
+    ? order.create_time
+    : null;
+
+export const isTikTokOrderEligibleForImport = (
+  order: TikTokOrder,
+  trackerStartEpoch: number
+) => {
+  const createTime = getTikTokOrderCreateTime(order);
+
+  return createTime !== null && createTime >= trackerStartEpoch;
+};
+
+export const getTikTokOrderSyncWindow = ({
+  syncTime,
+  days,
+  trackerStartEpoch,
+}: TikTokOrderSyncWindowInput) => {
+  const createTimeLt = Math.floor(syncTime.getTime() / 1000);
+  const rollingLowerBound = createTimeLt - days * SECONDS_PER_DAY;
+
+  return {
+    createTimeGe: Math.max(rollingLowerBound, trackerStartEpoch),
+    createTimeLt,
+  };
+};
+
 const toSafeText = (
   value: string | null | undefined,
   maximumLength: number
@@ -155,8 +313,9 @@ export const sanitizeTikTokOrderMetadata = (
   );
 
   if (status) metadata.status = status;
-  if (order.create_time != null) {
-    metadata.createTime = order.create_time;
+  const createTime = getTikTokOrderCreateTime(order);
+  if (createTime !== null) {
+    metadata.createTime = createTime;
   }
   if (order.update_time != null) {
     metadata.updateTime = order.update_time;
@@ -280,16 +439,7 @@ const requestTikTokOrderPage = async ({
   createTimeGe,
   createTimeLt,
   pageToken,
-}: {
-  appKey: string;
-  appSecret: string;
-  apiBaseUrl: string;
-  accessToken: string;
-  shopCipher: string;
-  createTimeGe: number;
-  createTimeLt: number;
-  pageToken: string | undefined;
-}): Promise<TikTokOrderPage> => {
+}: TikTokOrderPageRequestInput): Promise<TikTokOrderPage> => {
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const body = {
     create_time_ge: createTimeGe,
@@ -378,20 +528,35 @@ const prismaTikTokOrderStore: TikTokOrderStore = {
 };
 
 export const syncTikTokOrders = async (
-  days: number
+  days: number,
+  dependencyOverrides: Partial<SyncTikTokOrdersDependencies> = {}
 ): Promise<TikTokOrderSyncSummary> => {
   console.info("tiktok_order_sync_started", { days });
 
-  const syncTime = new Date();
-  const createTimeLt = Math.floor(syncTime.getTime() / 1000);
-  const createTimeGe = createTimeLt - days * 24 * 60 * 60;
+  const dependencies: SyncTikTokOrdersDependencies = {
+    now: () => new Date(),
+    getContext: getTikTokOrderApiContext,
+    requestOrderPage: requestTikTokOrderPage,
+    store: prismaTikTokOrderStore,
+    configuredImportStartAt: process.env[ORDER_IMPORT_START_AT_ENV],
+    ...dependencyOverrides,
+  };
+  const syncTime = dependencies.now();
+  const trackerStartEpoch = parseTikTokOrderImportStartAt(
+    dependencies.configuredImportStartAt
+  );
+  const { createTimeGe, createTimeLt } = getTikTokOrderSyncWindow({
+    syncTime,
+    days,
+    trackerStartEpoch,
+  });
   let context: Awaited<ReturnType<typeof getTikTokOrderApiContext>>;
   let orders: TikTokOrder[];
 
   try {
-    context = await getTikTokOrderApiContext();
+    context = await dependencies.getContext();
     orders = await collectTikTokOrderPages((pageToken) =>
-      requestTikTokOrderPage({
+      dependencies.requestOrderPage({
         ...context,
         createTimeGe,
         createTimeLt,
@@ -409,14 +574,25 @@ export const syncTikTokOrders = async (
     existing: 0,
     failed: 0,
   };
+  let skipped = 0;
 
   for (const order of orders) {
+    if (!isTikTokOrderEligibleForImport(order, trackerStartEpoch)) {
+      skipped += 1;
+      console.info("tiktok_order_import_skipped", {
+        tiktokOrderId: order.id,
+        reason: "TRACKER_START_CUTOFF",
+        createTime: getTikTokOrderCreateTime(order),
+      });
+      continue;
+    }
+
     try {
       const result = await importBasicTikTokOrder({
         order,
         shopId: context.shopId,
         importedAt: syncTime,
-        store: prismaTikTokOrderStore,
+        store: dependencies.store,
       });
       summary[result] += 1;
     } catch {
@@ -427,7 +603,7 @@ export const syncTikTokOrders = async (
     }
   }
 
-  console.info("tiktok_order_sync_completed", summary);
+  console.info("tiktok_order_sync_completed", { ...summary, skipped });
   return summary;
 };
 
