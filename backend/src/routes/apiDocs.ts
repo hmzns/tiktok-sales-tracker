@@ -1,0 +1,245 @@
+import { Router } from "express";
+
+const router = Router();
+
+router.get("/", (req, res) => {
+  return res.json({
+    success: true,
+    data: {
+      service: "sales-tracker-api",
+      version: "1.0.0",
+      endpoints: {
+        health: [
+          {
+            method: "GET",
+            path: "/health",
+            description: "Check API health",
+          },
+        ],
+        products: [
+          {
+            method: "GET",
+            path: "/products",
+            description:
+              "Get products with search, filter, and pagination",
+            query: ["search", "page", "limit", "isActive", "categoryId"],
+          },
+          {
+            method: "GET",
+            path: "/products/low-stock",
+            description: "Get low stock products",
+            query: ["threshold"],
+          },
+          {
+            method: "GET",
+            path: "/products/:id",
+            description: "Get product by ID",
+          },
+          {
+            method: "POST",
+            path: "/products",
+            description: "Create product",
+          },
+          {
+            method: "PUT",
+            path: "/products/:id",
+            description: "Update product",
+          },
+          {
+            method: "DELETE",
+            path: "/products/:id",
+            description: "Delete product",
+          },
+        ],
+        productCategories: [
+          {
+            method: "GET",
+            path: "/product-categories",
+            description: "Get all product categories",
+          },
+          {
+            method: "GET",
+            path: "/product-categories/:id",
+            description: "Get product category by ID",
+          },
+          {
+            method: "POST",
+            path: "/product-categories",
+            description: "Create product category",
+          },
+          {
+            method: "PUT",
+            path: "/product-categories/:id",
+            description: "Update product category",
+          },
+          {
+            method: "DELETE",
+            path: "/product-categories/:id",
+            description: "Delete product category",
+          },
+        ],
+        orders: [
+          {
+            method: "GET",
+            path: "/orders",
+            description: "Get orders with search, filter, and pagination",
+            query: ["search", "status", "platform", "page", "limit"],
+          },
+          {
+            method: "GET",
+            path: "/orders/:id",
+            description: "Get order by ID",
+          },
+          {
+            method: "POST",
+            path: "/orders",
+            description: "Create order",
+            body: {
+              items:
+                "non-empty array of { productId, quantity, optional sellPrice }",
+              discount:
+                "optional { type: NONE | FIXED | PERCENTAGE, value: number }",
+            },
+          },
+          {
+            method: "POST",
+            path: "/orders/:id/complete-import",
+            description:
+              "Add local items and complete an imported TikTok order",
+            body: {
+              paymentMode:
+                "FULL_TIKTOK | EXTERNAL_PRODUCT_PAYMENT (required)",
+              items:
+                "non-empty array of { productId, quantity, optional sellPrice }",
+              discount:
+                "optional { type: NONE | FIXED | PERCENTAGE, value: number }",
+            },
+          },
+          {
+            method: "PATCH",
+            path: "/orders/:id/status",
+            description: "Update order status",
+          },
+          {
+            method: "PATCH",
+            path: "/orders/:id/tiktok-payment-mode",
+            description:
+              "Assign or correct a TikTok order payment mode without changing stock, quantities, Finance data, or status",
+            body: {
+              paymentMode:
+                "FULL_TIKTOK | EXTERNAL_PRODUCT_PAYMENT (required)",
+              trackerPriceCorrections:
+                "required only for affected legacy items: array of confirmed { orderItemId, unitPrice }",
+            },
+          },
+          {
+            method: "POST",
+            path: "/orders/:id/sync-tiktok-finance",
+            description:
+              "Synchronize finalized TikTok Finance aggregates for one TikTok order",
+          },
+        ],
+        expenses: [
+          {
+            method: "GET",
+            path: "/expenses",
+            description:
+              "Get expenses with search, category filter, and pagination",
+            query: ["search", "category", "page", "limit"],
+          },
+          {
+            method: "GET",
+            path: "/expenses/:id",
+            description: "Get expense by ID",
+          },
+          {
+            method: "POST",
+            path: "/expenses",
+            description: "Create expense",
+          },
+          {
+            method: "PUT",
+            path: "/expenses/:id",
+            description: "Update expense",
+          },
+          {
+            method: "DELETE",
+            path: "/expenses/:id",
+            description: "Delete expense",
+          },
+        ],
+        stockMovements: [
+          {
+            method: "GET",
+            path: "/stock-movements",
+            description: "Get stock movement history",
+            query: ["productId", "type", "page", "limit"],
+          },
+          {
+            method: "POST",
+            path: "/stock-movements/adjust",
+            description: "Manual stock adjustment",
+          },
+        ],
+        dashboard: [
+          {
+            method: "GET",
+            path: "/dashboard/summary",
+            description:
+              "Get dashboard summary, sales, expenses, low stock, and stock activity",
+            query: ["year", "month"],
+          },
+        ],
+        reports: [
+          {
+            method: "GET",
+            path: "/reports/monthly",
+            description:
+              "Get export-ready monthly sales and product performance reports",
+            query: ["year", "month"],
+          },
+          {
+            method: "GET",
+            path: "/reports/sales-trends",
+            description:
+              "Get zero-filled daily sales, discounts, costs, expenses, and profit trends",
+            query: ["startDate", "endDate"],
+          },
+        ],
+        tiktokShop: [
+          {
+            method: "POST",
+            path: "/tiktok-shop/connect",
+            description: "Start TikTok Shop seller authorization",
+          },
+          {
+            method: "GET",
+            path: "/tiktok-shop/status",
+            description: "Get safe TikTok Shop connection and shop status",
+          },
+          {
+            method: "POST",
+            path: "/tiktok-shop/refresh",
+            description: "Refresh the stored TikTok Shop tokens",
+          },
+          {
+            method: "POST",
+            path: "/tiktok-shop/shop/sync",
+            description: "Retrieve and save authorized TikTok Shop metadata",
+          },
+          {
+            method: "POST",
+            path: "/tiktok-shop/orders/sync",
+            description:
+              "Import basic TikTok Shop orders from the last 1 to 30 days",
+            body: {
+              days: "optional integer; defaults to 7",
+            },
+          },
+        ],
+      },
+    },
+  });
+});
+
+export default router;

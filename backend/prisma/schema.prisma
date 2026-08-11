@@ -1,0 +1,264 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SalesPlatform {
+  MANUAL
+  TIKTOK_SHOP
+  SHOPEE
+  LAZADA
+}
+
+enum SalesOrderStatus {
+  NEEDS_ITEMS
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum OrderSource {
+  MANUAL
+  TIKTOK
+}
+
+enum DiscountType {
+  NONE
+  FIXED
+  PERCENTAGE
+}
+
+enum ExpenseCategory {
+  PACKAGING
+  ADS
+  SHIPPING
+  SUPPLIES
+  EQUIPMENT
+  SALARY
+  OTHER
+}
+
+enum StockMovementType {
+  RESTOCK
+  SALE
+  CANCEL_RESTORE
+  REFUND_RESTORE
+  MANUAL_IN
+  MANUAL_OUT
+  DAMAGE
+}
+
+enum TikTokSyncSource {
+  MANUAL
+  SCHEDULED
+}
+
+enum TikTokSyncStatus {
+  SUCCESS
+  FAILED
+}
+
+enum TikTokPaymentMode {
+  FULL_TIKTOK
+  EXTERNAL_PRODUCT_PAYMENT
+}
+
+enum TikTokFinanceStatus {
+  PENDING
+  SETTLED
+  UNAVAILABLE
+  ERROR
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+}
+
+model Product {
+  id        String  @id @default(cuid())
+  name      String
+  sku       String  @unique
+  costPrice Float
+  sellPrice Float
+  stock     Int     @default(0)
+  isActive  Boolean @default(true)
+
+  categoryId String?
+  category   ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orderItems     OrderItem[]
+  stockMovements StockMovement[]
+
+  @@index([categoryId])
+  @@index([createdAt(sort: Desc)])
+}
+
+model SalesOrder {
+  id             String      @id @default(cuid())
+  orderNumber    String?     @unique
+  tiktokOrderId  String?     @unique
+  source         OrderSource @default(MANUAL)
+  importedAt     DateTime?
+  rawImportData  Json?
+  stockProcessed Boolean     @default(false)
+
+  tiktokPaymentMode TikTokPaymentMode?
+  buyerShippingFee  Decimal?           @db.Decimal(18, 2)
+
+  financeStatus            TikTokFinanceStatus?
+  financeCurrency          String?
+  tiktokRevenueAmount      Decimal?             @db.Decimal(18, 2)
+  tiktokShippingCostAmount Decimal?             @db.Decimal(18, 2)
+  tiktokFeeAndTaxAmount    Decimal?             @db.Decimal(18, 2)
+  tiktokSettlementAmount   Decimal?             @db.Decimal(18, 2)
+  financeSyncedAt          DateTime?
+
+  platform SalesPlatform    @default(MANUAL)
+  status   SalesOrderStatus @default(COMPLETED)
+
+  customerName String?
+
+  subtotal      Float
+  discountType  DiscountType @default(NONE)
+  discountValue Float        @default(0)
+  discount      Float        @default(0)
+  shippingFee   Float        @default(0)
+  total         Float
+
+  totalCost Float
+  profit    Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items OrderItem[]
+
+  @@index([createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([platform, createdAt(sort: Desc)])
+}
+
+model TikTokConnection {
+  id                    String    @id @default(cuid())
+  merchantId            String    @unique
+  encryptedAccessToken  String
+  encryptedRefreshToken String
+  accessTokenExpiresAt  DateTime
+  refreshTokenExpiresAt DateTime
+  shopId                String?
+  shopCode              String?
+  shopName              String?
+  shopCipher            String?
+  shopRegion            String?
+  connectedAt           DateTime  @default(now())
+  refreshedAt           DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model TikTokOAuthState {
+  id        String    @id @default(cuid())
+  stateHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([expiresAt])
+}
+
+model TikTokSyncRun {
+  id            String           @id @default(cuid())
+  source        TikTokSyncSource
+  status        TikTokSyncStatus
+  days          Int
+  fetched       Int              @default(0)
+  created       Int              @default(0)
+  existing      Int              @default(0)
+  failed        Int              @default(0)
+  errorCategory String?
+  startedAt     DateTime
+  completedAt   DateTime
+  durationMs    Int?
+
+  @@index([completedAt(sort: Desc)])
+  @@index([status, completedAt(sort: Desc)])
+}
+
+model OrderItem {
+  id String @id @default(cuid())
+
+  orderId   String
+  productId String
+
+  quantity  Int
+  sellPrice Float
+  costPrice Float
+
+  lineTotal         Float
+  allocatedDiscount Float?
+  lineCost          Float
+  lineProfit        Float
+
+  order   SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product    @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model Expense {
+  id          String          @id @default(cuid())
+  title       String
+  amount      Float
+  category    ExpenseCategory @default(OTHER)
+  description String?
+  expenseDate DateTime        @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([expenseDate(sort: Desc)])
+  @@index([category, expenseDate(sort: Desc)])
+}
+
+model ProductCategory {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String?
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+}
+
+model StockMovement {
+  id String @id @default(cuid())
+
+  productId   String
+  type        StockMovementType
+  quantity    Int
+  stockBefore Int
+  stockAfter  Int
+
+  note      String?
+  reference String?
+
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([createdAt(sort: Desc)])
+  @@index([productId, createdAt(sort: Desc)])
+}

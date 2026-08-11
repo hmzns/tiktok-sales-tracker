@@ -1,0 +1,18 @@
+:root {
+  --font-display:
+    Spline Sans, Inter, ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji,
+    Segoe UI Symbol, Noto Color Emoji;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
+  --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
+  --font-serif: Georgia, 'Times New Roman', serif;
+}
+
+/* React Native Web preserves native press semantics; add a keyboard-only focus ring. */
+[role='button']:focus-visible,
+[role='tab']:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #fbc5cf !important;
+  outline-offset: 2px;
+}
